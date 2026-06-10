@@ -1139,6 +1139,14 @@ cSampleManager::Initialise(void)
 
 				for (int32 i = 0; i < STREAMED_SOUND_CD_CHECK_1; i++)
 				{
+#ifdef CUSTOM_WEB_RADIO
+					// The web-radio sentinel isn't a real file; skip it (the MSS backend can't stream it).
+					if ( i == STREAMED_SOUND_RADIO_80S80S )
+					{
+						nStreamLength[i] = 3600000;
+						continue;
+					}
+#endif
 #ifdef PS2_AUDIO_PATHS
 					strcpy(filepath, m_MP3FilesPath);
 					strcat(filepath, PS2StreamedNameTable[i]);

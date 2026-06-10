@@ -47,6 +47,30 @@ std::queue<std::pair<IDecoder*, void*>> gStreamsToClose;
 #include "crossplatform.h"
 #endif
 
+// CUSTOM (fork): internet-radio support (the "80s80s Rock" station). Networking uses WinHTTP on
+// Windows, which transparently follows the station's HTTPS redirect to its CDN. Decoding reuses
+// mpg123 in feed mode; underruns are filled with static noise so the stream never goes silent.
+#if defined(CUSTOM_WEB_RADIO) && defined(AUDIO_OAL_USE_MPG123)
+#include <vector>
+#include <thread>
+#include <mutex>
+#include <chrono>
+#ifdef _WIN32
+// librw builds don't pull in <windows.h> through common.h, and <winhttp.h> needs its types.
+// Include it ourselves (it self-guards, so it's a no-op for the d3d8/WITHWINDOWS path). STL headers
+// above are included first so the min/max macros below can't clobber them.
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include <winhttp.h>
+#pragma comment(lib, "winhttp.lib")
+#endif
+#endif
+
 /*
 As we ran onto an issue of having different volume levels for mono streams
 and stereo streams we are now handling all the stereo panning ourselves.
@@ -692,6 +716,279 @@ public:
 	}
 };
 
+#ifdef CUSTOM_WEB_RADIO
+// CUSTOM (fork): a live internet-radio decoder for the "80s80s Rock" station.
+//
+// A background thread streams the station's MP3 bytes (WinHTTP on Windows, which follows the
+// station's HTTPS redirect to its CDN) into a small FIFO; Decode() feeds those bytes to mpg123 and
+// pulls PCM back out. The output format is fixed (44.1 kHz / stereo / s16) so the OpenAL side stays
+// stable, and it never reports the real end of stream. Crucially, Decode() must NEVER return 0 while
+// the station is selected (CStream::FillBuffer bails on size==0): on any underrun - including "not
+// connected yet" or "network dropped" - it pads the buffer with static noise and returns a full one.
+class CWebStream : public IDecoder
+{
+	enum {
+		WEBRADIO_RATE     = 44100,        // the mp3-192 stream is 44.1 kHz stereo
+		WEBRADIO_CHANNELS = 2,
+		FIFO_CAP          = 128 * 1024,   // ~0.7s of compressed audio; bounds latency after a stall
+		NET_CHUNK         = 8192,
+	};
+
+	mpg123_handle     *m_pMH;
+	bool               m_bOpened;
+	std::thread        m_thread;
+	std::mutex         m_fifoMutex;
+	std::vector<uint8> m_fifo;             // raw network bytes waiting to be fed to mpg123
+	std::vector<uint8> m_pcm;              // decoded PCM not yet handed to OpenAL (persists across calls)
+	volatile bool      m_bQuit;
+	uint32             m_noiseSeed;
+#ifdef _WIN32
+	std::mutex         m_handleMutex;
+	HINTERNET          m_hSession;
+	HINTERNET          m_hConnect;
+	HINTERNET          m_hRequest;
+#endif
+
+	void PushNetBytes(const void *data, size_t len)
+	{
+		std::lock_guard<std::mutex> lock(m_fifoMutex);
+		if ( m_fifo.size() + len > FIFO_CAP )
+		{
+			size_t over = m_fifo.size() + len - FIFO_CAP;
+			if ( over >= m_fifo.size() )
+				m_fifo.clear();
+			else
+				m_fifo.erase(m_fifo.begin(), m_fifo.begin() + over);
+		}
+		const uint8 *p = (const uint8 *)data;
+		m_fifo.insert(m_fifo.end(), p, p + len);
+	}
+
+	size_t PullNetBytes(uint8 *out, size_t maxLen)
+	{
+		std::lock_guard<std::mutex> lock(m_fifoMutex);
+		size_t n = Min((uint32)maxLen, (uint32)m_fifo.size());
+		if ( n > 0 )
+		{
+			memcpy(out, &m_fifo[0], n);
+			m_fifo.erase(m_fifo.begin(), m_fifo.begin() + n);
+		}
+		return n;
+	}
+
+	void FillNoise(uint8 *buffer, size_t bytes)
+	{
+		int16 *samples = (int16 *)buffer;
+		size_t count = bytes / sizeof(int16);
+		for ( size_t i = 0; i < count; i++ )
+		{
+			m_noiseSeed = m_noiseSeed * 1103515245u + 12345u;
+			int32 v = (int32)((m_noiseSeed >> 16) & 0x7FFF) - 0x4000;
+			samples[i] = (int16)(v / 8);   // keep the static at a modest level
+		}
+	}
+
+#ifdef _WIN32
+	bool ConnectAndStream()
+	{
+		HINTERNET hSession = WinHttpOpen(L"reVC/1.0",
+			WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+		if ( hSession == NULL )
+			return false;
+
+		// resolve / connect / send / receive timeouts (ms) so a dead network can't wedge the thread
+		WinHttpSetTimeouts(hSession, 5000, 5000, 5000, 5000);
+		DWORD redirectPolicy = WINHTTP_OPTION_REDIRECT_POLICY_ALWAYS;
+		WinHttpSetOption(hSession, WINHTTP_OPTION_REDIRECT_POLICY, &redirectPolicy, sizeof(redirectPolicy));
+
+		HINTERNET hConnect = WinHttpConnect(hSession, L"streams.80s80s.de", INTERNET_DEFAULT_HTTPS_PORT, 0);
+		HINTERNET hRequest = NULL;
+		if ( hConnect != NULL )
+			hRequest = WinHttpOpenRequest(hConnect, L"GET", L"/rock/mp3-192",
+				NULL, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, WINHTTP_FLAG_SECURE);
+
+		if ( hRequest == NULL )
+		{
+			if ( hConnect != NULL ) WinHttpCloseHandle(hConnect);
+			WinHttpCloseHandle(hSession);
+			return false;
+		}
+
+		// publish the handles so the destructor can abort a blocked WinHttpReadData by closing them
+		{
+			std::lock_guard<std::mutex> lock(m_handleMutex);
+			if ( m_bQuit )
+			{
+				WinHttpCloseHandle(hRequest);
+				WinHttpCloseHandle(hConnect);
+				WinHttpCloseHandle(hSession);
+				return false;
+			}
+			m_hSession = hSession;
+			m_hConnect = hConnect;
+			m_hRequest = hRequest;
+		}
+
+		// Note: we do NOT send "Icy-MetaData: 1", so the response body is a clean MP3 byte stream.
+		bool streamed = false;
+		if ( WinHttpSendRequest(hRequest, WINHTTP_NO_ADDITIONAL_HEADERS, 0, WINHTTP_NO_REQUEST_DATA, 0, 0, 0)
+			&& WinHttpReceiveResponse(hRequest, NULL) )
+		{
+			char buf[NET_CHUNK];
+			while ( !m_bQuit )
+			{
+				DWORD read = 0;
+				if ( !WinHttpReadData(hRequest, buf, sizeof(buf), &read) )
+					break;      // error, or aborted by the destructor closing the handle
+				if ( read == 0 )
+					break;      // server closed the stream
+				PushNetBytes(buf, read);
+				streamed = true;
+			}
+		}
+
+		// reclaim the handles unless the destructor already closed them
+		{
+			std::lock_guard<std::mutex> lock(m_handleMutex);
+			if ( m_hRequest != NULL ) { WinHttpCloseHandle(m_hRequest); m_hRequest = NULL; }
+			if ( m_hConnect != NULL ) { WinHttpCloseHandle(m_hConnect); m_hConnect = NULL; }
+			if ( m_hSession != NULL ) { WinHttpCloseHandle(m_hSession); m_hSession = NULL; }
+		}
+		return streamed;
+	}
+
+	void AbortConnection()
+	{
+		// closing the request handle makes an in-flight WinHttpReadData return immediately
+		std::lock_guard<std::mutex> lock(m_handleMutex);
+		if ( m_hRequest != NULL ) { WinHttpCloseHandle(m_hRequest); m_hRequest = NULL; }
+		if ( m_hConnect != NULL ) { WinHttpCloseHandle(m_hConnect); m_hConnect = NULL; }
+		if ( m_hSession != NULL ) { WinHttpCloseHandle(m_hSession); m_hSession = NULL; }
+	}
+#else
+	// The station's CDN is HTTPS-only, so a non-Windows path needs a TLS client (libcurl/OpenSSL).
+	// Until that exists elsewhere, off-Windows builds simply play static for this station.
+	bool ConnectAndStream() { return false; }
+	void AbortConnection() { }
+#endif
+
+	void ReaderThread()
+	{
+		while ( !m_bQuit )
+		{
+			ConnectAndStream();
+			// reconnect after a drop/failure, but stay responsive to shutdown
+			for ( int i = 0; i < 10 && !m_bQuit; i++ )
+				std::this_thread::sleep_for(std::chrono::milliseconds(100));
+		}
+	}
+
+public:
+	CWebStream(const char *) :
+		m_pMH(nil),
+		m_bOpened(false),
+		m_bQuit(false),
+		m_noiseSeed(0x1234567u)
+#ifdef _WIN32
+		, m_hSession(NULL)
+		, m_hConnect(NULL)
+		, m_hRequest(NULL)
+#endif
+	{
+		m_pMH = mpg123_new(nil, nil);
+		if ( m_pMH != nil && mpg123_open_feed(m_pMH) == MPG123_OK )
+		{
+			// force a single fixed output format so the OpenAL buffers never need reconfiguring
+			mpg123_format_none(m_pMH);
+			mpg123_format(m_pMH, WEBRADIO_RATE, MPG123_STEREO, MPG123_ENC_SIGNED_16);
+			m_bOpened = true;
+			m_thread = std::thread(&CWebStream::ReaderThread, this);
+		}
+	}
+
+	~CWebStream()
+	{
+		m_bQuit = true;
+		AbortConnection();
+		if ( m_thread.joinable() )
+			m_thread.join();
+		if ( m_pMH != nil )
+		{
+			mpg123_close(m_pMH);
+			mpg123_delete(m_pMH);
+			m_pMH = nil;
+		}
+	}
+
+	bool IsOpened() { return m_bOpened; }
+	void FileOpen() { }
+
+	uint32 GetSampleSize() { return sizeof(uint16); }
+	// A live stream never really ends; report a long, non-zero length so cMusicManager's position
+	// bookkeeping (which does pos % length) stays well-defined.
+	uint32 GetSampleCount() { return WEBRADIO_RATE * 3600; }
+	uint32 GetSampleRate()  { return WEBRADIO_RATE; }
+	uint32 GetChannels()    { return WEBRADIO_CHANNELS; }
+
+	void   Seek(uint32) { }   // not seekable
+	uint32 Tell() { return 0; }
+
+	uint32 Decode(void *buffer)
+	{
+		if ( !m_bOpened )
+			return 0;
+
+		const size_t need = GetBufferSize();
+		uint8 netbuf[NET_CHUNK];
+
+		for ( ;; )
+		{
+			size_t got = PullNetBytes(netbuf, sizeof(netbuf));
+			if ( got > 0 )
+				mpg123_feed(m_pMH, netbuf, got);
+
+			for ( ;; )
+			{
+				uint8 dec[NET_CHUNK];
+				size_t done = 0;
+				int err = mpg123_read(m_pMH, dec, sizeof(dec), &done);
+				if ( done > 0 )
+					m_pcm.insert(m_pcm.end(), dec, dec + done);
+				if ( m_pcm.size() >= need )
+					break;
+				if ( err == MPG123_NEW_FORMAT )
+					continue;
+				if ( err != MPG123_OK )
+					break;   // MPG123_NEED_MORE / MPG123_DONE / hard error
+			}
+
+			if ( m_pcm.size() >= need )
+				break;
+			if ( got == 0 )
+				break;       // network drained and still short -> underrun this call
+		}
+
+		// keep latency low: don't let decoded audio pile up after a stall recovery
+		const size_t maxPcm = need * 4;
+		if ( m_pcm.size() > maxPcm )
+			m_pcm.erase(m_pcm.begin(), m_pcm.begin() + (m_pcm.size() - maxPcm));
+
+		if ( m_pcm.size() >= need )
+		{
+			memcpy(buffer, &m_pcm[0], need);
+			m_pcm.erase(m_pcm.begin(), m_pcm.begin() + need);
+			SortStereoBuffer.SortStereo(buffer, need);   // de-interleave, like the other stereo decoders
+		}
+		else
+		{
+			// not connected yet, or a dropout: emit static and keep any partial PCM for next time
+			FillNoise((uint8 *)buffer, need);
+		}
+		return (uint32)need;
+	}
+};
+#endif // CUSTOM_WEB_RADIO
+
 #endif
 #define VAG_LINE_SIZE (0x10)
 #define VAG_SAMPLES_IN_LINE (28)
@@ -1291,7 +1588,11 @@ bool CStream::Open(const char* filename, uint32 overrideSampleRate)
 	else if (!strcasecmp(&m_aFilename[strlen(m_aFilename) - strlen(".opus")], ".opus"))
 		m_pSoundFile = new COpusFile(m_aFilename);
 #endif
-	else 
+#if defined(CUSTOM_WEB_RADIO) && defined(AUDIO_OAL_USE_MPG123)
+	else if (!strcasecmp(&m_aFilename[strlen(m_aFilename) - strlen(".web")], ".web"))
+		m_pSoundFile = new CWebStream(m_aFilename);   // CUSTOM: the 80s80s Rock internet-radio station
+#endif
+	else
 		m_pSoundFile = nil;
 
 	if ( m_pSoundFile && m_pSoundFile->IsOpened() )

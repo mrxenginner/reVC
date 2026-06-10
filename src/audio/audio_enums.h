@@ -12,6 +12,11 @@ enum eRadioStation
 	RADIO_ESPANTOSO,
 	EMOTION,
 	WAVE,
+#ifdef CUSTOM_WEB_RADIO
+	EIGHTIES80S, // custom 80s80s Rock web stream; must stay parallel with STREAMED_SOUND_RADIO_80S80S.
+	             // Kept BEFORE USERTRACK so the MP3-player skip logic (station==USERTRACK -> RADIO_OFF)
+	             // can't jump over it when the player has no custom MP3s.
+#endif
 #ifdef GTA_PC
 	USERTRACK,
 #endif
@@ -55,6 +60,9 @@ enum eStreamedSounds
 	STREAMED_SOUND_RADIO_ESPANTOSO,
 	STREAMED_SOUND_RADIO_EMOTION,
 	STREAMED_SOUND_RADIO_WAVE,
+#ifdef CUSTOM_WEB_RADIO
+	STREAMED_SOUND_RADIO_80S80S, // custom 80s80s Rock web stream; index must equal eRadioStation::EIGHTIES80S
+#endif
 #ifndef GTA_PS2
 	STREAMED_SOUND_RADIO_MP3_PLAYER,
 #endif

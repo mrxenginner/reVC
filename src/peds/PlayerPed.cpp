@@ -27,6 +27,8 @@
 #ifdef CUSTOM_SWIMMING
 #include "WaterLevel.h"
 #include "AnimManager.h"
+#include "Particle.h"
+#include "ParticleType.h"
 #endif
 
 #define PAD_MOVE_TO_GAME_WORLD_MOVE 60.0f
@@ -1582,12 +1584,14 @@ CPlayerPed::PlayerControlZelda(CPad *padUsed)
 // reVC fork addition (NOT reversed): surface-swimming controller. Driven each frame from
 // CPlayerPed::ProcessControl while CPed::ProcessBuoyancy reports the player is in deep water.
 // Tunables (game units) - adjust to taste:
-#define SWIM_STROKE_SLOW	0.045f	// per-frame velocity for a normal stroke
-#define SWIM_STROKE_FAST	0.090f	// sprint stroke
+#define SWIM_STROKE_SLOW	0.055f	// per-frame velocity for a normal stroke
+#define SWIM_STROKE_FAST	0.130f	// sprint stroke - raise this if the body lags behind the
+					// swim_fast animation (the "rubberband"/treadmill look)
 #define SWIM_SURFACE_OFFSET	0.5f	// how far the ped origin (waist, ~FEET_OFFSET above feet) sits
 					// below the surface. Bigger => lower in the water. THE dial for
 					// how the swimmer rides; tune to taste.
 #define SWIM_MOVE_ACCEL		0.07f	// throttle ramp, matches on-foot accel
+#define SWIM_WAKE_SIZE		0.15f	// size of the forward-swim wake splash particles (0 = off)
 
 void
 CPlayerPed::ProcessSwimming(CPad *padUsed)
@@ -1606,18 +1610,18 @@ CPlayerPed::ProcessSwimming(CPad *padUsed)
 	if (m_nPedState != PED_IDLE)
 		SetPedState(PED_IDLE);
 
-	// --- Heading & throttle from the stick, camera-relative (mirrors PlayerControlZelda) ---
-	float camOrientation = TheCamera.Orientation;
-	float leftRight = padUsed ? padUsed->GetPedWalkLeftRight() : 0.0f;
+	// --- Forward-only control (GTA SA style): only W / stick-up propels, and you steer with the
+	// camera. GetPedWalkUpDown() is NEGATIVE for forward; left/right and back are ignored. ---
 	float upDown = padUsed ? padUsed->GetPedWalkUpDown() : 0.0f;
-	float padMove = CVector2D(leftRight, upDown).Magnitude();
 	bool sprinting = padUsed && padUsed->GetSprint();
 
-	if (padMove > 0.0f) {
-		float padHeading = CGeneral::GetRadianAngleBetweenPoints(0.0f, 0.0f, -leftRight, upDown);
-		m_fRotationDest = CGeneral::LimitRadianAngle(padHeading - camOrientation);
+	if (upDown < 0.0f) {
+		// Heading = camera-forward (same forward the on-foot controls use), so turning the
+		// camera turns the swim direction.
+		float padHeading = CGeneral::GetRadianAngleBetweenPoints(0.0f, 0.0f, 0.0f, upDown);
+		m_fRotationDest = CGeneral::LimitRadianAngle(padHeading - TheCamera.Orientation);
 
-		float target = Min(1.0f, padMove / PAD_MOVE_TO_GAME_WORLD_MOVE);
+		float target = Min(1.0f, -upDown / PAD_MOVE_TO_GAME_WORLD_MOVE);
 		m_fMoveSpeed = Min(target, m_fMoveSpeed + SWIM_MOVE_ACCEL * CTimer::GetTimeStep());
 		m_nMoveState = sprinting ? PEDMOVE_SPRINT : PEDMOVE_RUN;
 	} else {
@@ -1640,6 +1644,19 @@ CPlayerPed::ProcessSwimming(CPad *padUsed)
 	if (CWaterLevel::GetWaterLevel(GetPosition().x, GetPosition().y, GetPosition().z, &waterLevel, false))
 		GetMatrix().GetPosition().z = waterLevel - SWIM_SURFACE_OFFSET;
 	m_vecMoveSpeed.z = 0.0f;
+
+	// --- Small wake trailing the swimmer when moving forward, à la the boat wake. Spawn a foam
+	// splash on the surface just behind us (throttled to every other frame to keep it subtle). ---
+	if (SWIM_WAKE_SIZE > 0.0f && m_fMoveSpeed > 0.0f && (CTimer::GetFrameCounter() & 1)) {
+		CVector wakePos = GetPosition() - 0.4f * GetForward();
+		float wakeLevel;
+		if (CWaterLevel::GetWaterLevel(wakePos, &wakeLevel, false)) {
+			wakePos.z = wakeLevel + 0.04f;
+			CVector wakeDir = -0.06f * m_vecMoveSpeed;
+			wakeDir.z = 0.02f;
+			CParticle::AddParticle(PARTICLE_CAR_SPLASH, wakePos, wakeDir, nil, SWIM_WAKE_SIZE);
+		}
+	}
 
 	// --- Select & blend the swim clip; BlendAnimation fades the others (same partial-ness) ---
 	AnimationId desired;

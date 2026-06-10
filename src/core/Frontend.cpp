@@ -151,6 +151,9 @@ const char* FrontendFilenames[][2] = {
 	{"espantoso", "espantosoA"},
 	{"emotion", "emotionA"},
 	{"wave103", "wave103A"},
+#ifdef CUSTOM_WEB_RADIO
+	{"vrock", "vrockA"}, // CUSTOM: reuse V-Rock's logo for "80s80s Rock" (placeholder art)
+#endif
 	{"mp3", "mp3A"},
 	{"downOff", "buttonA"},
 	{"downOn", "buttonA"},
@@ -614,8 +617,13 @@ CMenuManager::Initialise(void)
 	if (DMAudio.IsMP3RadioChannelAvailable()) {
 		if (m_PrefsRadioStation < WILDSTYLE || m_PrefsRadioStation > USERTRACK)
 			m_PrefsRadioStation = CGeneral::GetRandomNumber() % (USERTRACK + 1);
+#ifdef CUSTOM_WEB_RADIO
+	} else if (m_PrefsRadioStation < WILDSTYLE || m_PrefsRadioStation > EIGHTIES80S)
+		m_PrefsRadioStation = CGeneral::GetRandomNumber() % (EIGHTIES80S + 1);
+#else
 	} else if (m_PrefsRadioStation < WILDSTYLE || m_PrefsRadioStation > WAVE)
 		m_PrefsRadioStation = CGeneral::GetRandomNumber() % (WAVE + 1);
+#endif
 
 	CFileMgr::SetDir("");
 	//CFileMgr::SetDir("");
@@ -3883,8 +3891,13 @@ CMenuManager::PrintRadioSelector(void)
 		rightMostSprite = MENUSPRITE_MP3;
 		rightMostStation = USERTRACK;
 	} else {
+#ifdef CUSTOM_WEB_RADIO
+		rightMostSprite = MENUSPRITE_80S80S;
+		rightMostStation = EIGHTIES80S;
+#else
 		rightMostSprite = MENUSPRITE_WAVE;
 		rightMostStation = WAVE;
+#endif
 	}
  #ifdef THIS_IS_STUPID
 

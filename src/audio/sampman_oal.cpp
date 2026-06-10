@@ -929,7 +929,16 @@ cSampleManager::Initialise(void)
 #endif
 
 		for ( int32 i = 0; i < TOTAL_STREAMED_SOUNDS; i++ )
-		{	
+		{
+#ifdef CUSTOM_WEB_RADIO
+			// Don't open the live web stream at boot (no network hit, no USERERROR when offline).
+			// Report the same fixed length CWebStream advertises so position math stays valid.
+			if ( i == STREAMED_SOUND_RADIO_80S80S )
+			{
+				nStreamLength[i] = 3600000;
+				continue;
+			}
+#endif
 			if ( aStream[0] && (
 #ifdef PS2_AUDIO_PATHS
 				aStream[0]->Open(PS2StreamedNameTable[i], IsThisTrackAt16KHz(i) ? 16000 : 32000) || 

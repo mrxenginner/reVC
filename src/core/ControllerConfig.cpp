@@ -379,7 +379,9 @@ void CControllerConfigManager::InitDefaultControlConfigMouse(CMouseControllerSta
 
 		SetMouseButtonAssociatedWithAction(PED_CYCLE_WEAPON_RIGHT,       5);
 
-		SetMouseButtonAssociatedWithAction(VEHICLE_CHANGE_RADIO_STATION, 4);
+		// CUSTOM: next station defaults to mouse wheel DOWN (5); RADIO_SCROLL_TO_PREV_STATION
+		// makes the opposite direction (wheel UP) tune to the previous station.
+		SetMouseButtonAssociatedWithAction(VEHICLE_CHANGE_RADIO_STATION, 5);
 
 		SetMouseButtonAssociatedWithAction(PED_SNIPER_ZOOM_IN, 4);
 

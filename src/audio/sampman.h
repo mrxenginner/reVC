@@ -285,6 +285,9 @@ static char PS2StreamedNameTable[][40] =
 	"AUDIO\\MUSIC\\ESPANT.VB",
 	"AUDIO\\MUSIC\\EMOTION.VB",
 	"AUDIO\\MUSIC\\WAVE.VB",
+#ifdef CUSTOM_WEB_RADIO
+	"AUDIO\\80S80S.WEB", // routed to the network decoder by its .web extension, never read from disk
+#endif
 	"AUDIO\\MUSIC\\MISCOM.VB",
 	"AUDIO\\MUSIC\\CITY.VB",
 	"AUDIO\\MUSIC\\WATER.VB",
@@ -1514,6 +1517,9 @@ static char StreamedNameTable[][25] =
 	"AUDIO\\ESPANT.ADF",
 	"AUDIO\\EMOTION.ADF",
 	"AUDIO\\WAVE.ADF",
+#ifdef CUSTOM_WEB_RADIO
+	"AUDIO\\80S80S.WEB", // routed to the network decoder by its .web extension, never read from disk
+#endif
 	"AUDIO\\MISCOM.MP3",
 	"AUDIO\\CITY.MP3",
 	"AUDIO\\WATER.MP3",

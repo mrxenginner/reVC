@@ -66,7 +66,10 @@ uint32 NewGameRadioTimers[NUM_RADIOS] =
 	1418050,
 	3178240,
 	471210,
-	0
+	0,
+#ifdef CUSTOM_WEB_RADIO
+	0, // EIGHTIES80S: no "new game" listen-time seed for the custom web station
+#endif
 };
 
 #ifdef GTA_PS2
@@ -1487,6 +1490,14 @@ cMusicManager::DisplayRadioStationName()
 			pCurrentStation = nil;
 			return;
 		}
+		break;
+	}
+#endif
+#ifdef CUSTOM_WEB_RADIO
+	case EIGHTIES80S: {
+		// Same name in every language. Built element-wise so it matches reVC's wchar typedef.
+		static wchar n80s80sRock[] = { '8','0','s','8','0','s',' ','R','o','c','k','\0' };
+		string = n80s80sRock;
 		break;
 	}
 #endif

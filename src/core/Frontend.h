@@ -144,6 +144,10 @@ enum eMenuSprites
 	MENUSPRITE_ESPANTOSO,
 	MENUSPRITE_EMOTION,
 	MENUSPRITE_WAVE,
+#ifdef CUSTOM_WEB_RADIO
+	MENUSPRITE_80S80S, // logo for the custom station; kept between WAVE and MP3 so the
+	                   // `station + MENUSPRITE_WILDSTYLE` mapping stays 1:1 with eRadioStation
+#endif
 	MENUSPRITE_MP3,
 	MENUSPRITE_DOWNOFF,
 	MENUSPRITE_DOWNON,

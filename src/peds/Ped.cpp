@@ -1634,6 +1634,7 @@ CPed::ProcessBuoyancy(void)
 #ifdef CUSTOM_SWIMMING
 	const float SWIM_MIN_DEPTH = 1.5f;	// surface-to-seabed depth above which the player swims (else wades)
 	const float SWIM_DEEP_PROBE = 6.0f;	// how far below the surface we look for the seabed
+	const float SWIM_SPLASH_FALL_SPEED = -0.2f;	// downward entry speed below which we splash (a height drop, not a wade-in)
 #endif
 
 	if (bInVehicle)
@@ -1659,6 +1660,9 @@ CPed::ProcessBuoyancy(void)
 		color.b = (0.5f * CTimeCycle::GetDirectionalGreen() + CTimeCycle::GetAmbientGreen()) * 127.5f;
 		color.a = CGeneral::GetRandomNumberInRange(48.0f, 96.0f);
 		bIsInWater = true;
+#ifdef CUSTOM_SWIMMING
+		float swimEntryFallSpeed = m_vecMoveSpeed.z;	// capture before buoyancy adds lift, to detect a drop
+#endif
 		ApplyMoveForce(buoyancyImpulse);
 #ifdef CUSTOM_SWIMMING
 		// reVC fork addition: decide swimming from the WATER DEPTH at our location (surface to
@@ -1676,6 +1680,17 @@ CPed::ProcessBuoyancy(void)
 				waterDepth = mod_Buoyancy.m_waterlevel - bedCol.point.z;
 
 			if (waterDepth >= SWIM_MIN_DEPTH) {
+				// Splash + sound when arriving from a height: a real drop carries downward speed,
+				// while wading in from a beach/ramp does not, so gradual entries stay quiet. Fires
+				// only on the entry frame (ProcessSwimming zeroes z-speed once swimming).
+				if (swimEntryFallSpeed < SWIM_SPLASH_FALL_SPEED) {
+					DMAudio.PlayOneShot(m_audioEntityId, SOUND_SPLASH, 0.0f);
+					CVector splashPos = GetPosition();
+					float lvl = 0.0f;
+					if (CWaterLevel::GetWaterLevel(splashPos, &lvl, false))
+						splashPos.z = lvl;
+					CParticleObject::AddObject(POBJECT_PED_WATER_SPLASH, splashPos, CVector(0.0f, 0.0f, 0.1f), 0.0f, 200, color, true);
+				}
 				bIsSwimming = true;
 				bIsStanding = false;
 				bIsInTheAir = false;	// we're swimming, not falling - don't let the air state carry in

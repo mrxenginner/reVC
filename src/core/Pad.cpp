@@ -1596,6 +1596,12 @@ void CPad::AddToPCCheatString(char c)
 		WallClimbingCheat();
 #endif
 
+#ifdef HUNTER_CHEAT
+	// "HELLYEAH"
+	if (!_CHEATCMP("HAEYLLEH"))
+		VehicleCheat(MI_HUNTER);
+#endif
+
 #if !defined(PC_WATER) && defined(WATER_CHEATS)
 	// SEABEDCHEAT
 	if (!_CHEATCMP("TAEHCDEBAESON"))
