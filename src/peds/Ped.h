@@ -495,7 +495,10 @@ public:
 
 #ifdef KANGAROO_CHEAT
 	// our own flags
-	uint32 m_ped_flagI80 : 1; // KANGAROO_CHEAT define makes use of this as cheat toggle 
+	uint32 m_ped_flagI80 : 1; // KANGAROO_CHEAT define makes use of this as cheat toggle
+#endif
+#ifdef CUSTOM_SWIMMING
+	uint32 bIsSwimming : 1; // reVC fork addition: player is afloat and swimming instead of drowning
 #endif
 
 	uint8 m_gangFlags;

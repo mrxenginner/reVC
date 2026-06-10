@@ -1631,6 +1631,10 @@ CPed::ProcessBuoyancy(void)
 	static uint32 nGenerateRaindrops = 0;
 	static uint32 nGenerateWaterCircles = 0;
 	CRGBA color;
+#ifdef CUSTOM_SWIMMING
+	const float SWIM_MIN_DEPTH = 1.5f;	// surface-to-seabed depth above which the player swims (else wades)
+	const float SWIM_DEEP_PROBE = 6.0f;	// how far below the surface we look for the seabed
+#endif
 
 	if (bInVehicle)
 		return;
@@ -1656,13 +1660,41 @@ CPed::ProcessBuoyancy(void)
 		color.a = CGeneral::GetRandomNumberInRange(48.0f, 96.0f);
 		bIsInWater = true;
 		ApplyMoveForce(buoyancyImpulse);
+#ifdef CUSTOM_SWIMMING
+		// reVC fork addition: decide swimming from the WATER DEPTH at our location (surface to
+		// seabed) rather than the ped's bobbing z. Depth is stable frame-to-frame, so the swim
+		// state no longer flickers - which is what made both the player and the follow-camera
+		// bob around the surface. When deep, return early; CPlayerPed::ProcessSwimming owns the
+		// surface clamp and stroke motion from here.
+		if (IsPlayer() && !DyingOrDead()) {
+			CColPoint bedCol;
+			CEntity *bedEnt;
+			CVector probeTop(GetPosition().x, GetPosition().y, mod_Buoyancy.m_waterlevel + 0.5f);
+			float waterDepth = SWIM_DEEP_PROBE;
+			if (CWorld::ProcessVerticalLine(probeTop, mod_Buoyancy.m_waterlevel - SWIM_DEEP_PROBE,
+					bedCol, bedEnt, true, false, false, false, false, true, nil))
+				waterDepth = mod_Buoyancy.m_waterlevel - bedCol.point.z;
+
+			if (waterDepth >= SWIM_MIN_DEPTH) {
+				bIsSwimming = true;
+				bIsStanding = false;
+				bIsInTheAir = false;	// we're swimming, not falling - don't let the air state carry in
+				bIsLanding = false;
+				return;
+			}
+		}
+#endif
 		if (!DyingOrDead()) {
 			if (bTryingToReachDryLand) {
 				if (buoyancyImpulse.z / m_fMass > GRAVITY * 0.4f * CTimer::GetTimeStep()) {
 					bTryingToReachDryLand = false;
 					CVector pos = GetPosition();
 					if (PlacePedOnDryLand()) {
-						if (m_fHealth > 20.0f)
+						if (m_fHealth > 20.0f
+#ifdef CUSTOM_SWIMMING
+							&& !IsPlayer()	// swimming players climb out unharmed
+#endif
+							)
 							InflictDamage(nil, WEAPONTYPE_DROWNING, 15.0f, PEDPIECE_TORSO, false);
 
 						if (bIsInTheAir) {
@@ -1686,8 +1718,15 @@ CPed::ProcessBuoyancy(void)
 			m_vecMoveSpeed.y *= speedMult;
 			m_vecMoveSpeed.z *= speedMult;
 			bIsStanding = false;
-			bIsDrowning = true;
-			InflictDamage(nil, WEAPONTYPE_DROWNING, 3.0f * CTimer::GetTimeStep(), PEDPIECE_TORSO, 0);
+#ifdef CUSTOM_SWIMMING
+			// Player never drowns: deep water is handled by the stable depth check above (which
+			// returns early); shallow/marginal water just floats here. Only NPCs drown.
+			if (!IsPlayer())
+#endif
+			{
+				bIsDrowning = true;
+				InflictDamage(nil, WEAPONTYPE_DROWNING, 3.0f * CTimer::GetTimeStep(), PEDPIECE_TORSO, 0);
+			}
 		}
 		if (buoyancyImpulse.z / m_fMass > GRAVITY * 0.25f * CTimer::GetTimeStep()) {
 			if (speedMult == 0.0f) {
@@ -1770,6 +1809,9 @@ CPed::ProcessControl(void)
 	BuildPedLists();
 	bIsInWater = false;
 	bIsDrowning = false;
+#ifdef CUSTOM_SWIMMING
+	bIsSwimming = false;	// recomputed by ProcessBuoyancy each frame; cleared on leaving deep water
+#endif
 	ProcessBuoyancy();
 
 	if (m_nPedState != PED_ARRESTED) {
@@ -5277,6 +5319,12 @@ CPed::CheckIfInTheAir(void)
 {
 	if (bInVehicle)
 		return false;
+#ifdef CUSTOM_SWIMMING
+	// A swimmer is never "in the air"; otherwise the deep water (no ground below) makes this
+	// return true and the engine blends the partial FALL_GLIDE over the swim stroke every frame.
+	if (bIsSwimming)
+		return false;
+#endif
 
 	CVector pos = GetPosition();
 	CColPoint foundColPoint;

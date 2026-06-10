@@ -69,6 +69,9 @@ enum AssocGroupId
 	ASSOCGRP_CHAINSAWLEFT,
 	ASSOCGRP_CHAINSAWRIGHT,
 #endif
+#ifdef CUSTOM_SWIMMING
+	ASSOCGRP_SWIM,	// reVC fork addition: swim_idle/slow/fast over the "ped" block
+#endif
 
 	NUM_ANIM_ASSOC_GROUPS
 };

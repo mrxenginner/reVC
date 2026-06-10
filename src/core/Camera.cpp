@@ -1243,7 +1243,12 @@ CCamera::CamControl(void)
 
 			// Fallen into water
 			if(Cams[ActiveCam].IsTargetInWater(Cams[ActiveCam].Source) &&
-			   Cams[ActiveCam].CamTargetEntity->IsPed())
+			   Cams[ActiveCam].CamTargetEntity->IsPed()
+#ifdef CUSTOM_SWIMMING
+			   // A swimming player keeps the normal follow camera, not the fallen-in-water cam.
+			   && !((CPed*)Cams[ActiveCam].CamTargetEntity)->bIsSwimming
+#endif
+			   )
 				ReqMode = CCam::MODE_PLAYER_FALLEN_WATER;
 
 			// Set top down

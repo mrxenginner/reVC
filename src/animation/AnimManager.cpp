@@ -261,6 +261,15 @@ AnimAssocDesc aSunbatheAnimDescs[] = {
 	{ ANIM_SUNBATHE_UP, ASSOC_REPEAT | ASSOC_PARTIAL | ASSOC_HAS_TRANSLATION | ASSOC_HAS_X_TRANSLATION },
 	{ ANIM_SUNBATHE_ESCAPE, ASSOC_REPEAT | ASSOC_PARTIAL | ASSOC_HAS_TRANSLATION | ASSOC_HAS_X_TRANSLATION },
 };
+#ifdef CUSTOM_SWIMMING
+// reVC fork addition: full-body looping swim clips. No ASSOC_HAS_TRANSLATION -
+// ProcessSwimming drives position by velocity, so we ignore the baked root motion.
+AnimAssocDesc aSwimAnimDescs[] = {
+	{ ANIM_SWIM_IDLE, ASSOC_REPEAT },
+	{ ANIM_SWIM_SLOW, ASSOC_REPEAT },
+	{ ANIM_SWIM_FAST, ASSOC_REPEAT },
+};
+#endif
 AnimAssocDesc aPlayerIdleAnimDescs[] = {
 	{ ANIM_PLAYER_IDLE1, ASSOC_DELETEFADEDOUT | ASSOC_FADEOUTWHENDONE | ASSOC_PARTIAL },
 	{ ANIM_PLAYER_IDLE2, ASSOC_DELETEFADEDOUT | ASSOC_FADEOUTWHENDONE | ASSOC_PARTIAL },
@@ -668,6 +677,13 @@ char const* aSunbatheAnimations[] = {
 	"batherup",
 	"batherscape",
 };
+#ifdef CUSTOM_SWIMMING
+char const* aSwimAnimations[] = {
+	"swim_idle",
+	"swim_slow",
+	"swim_fast",
+};
+#endif
 char const* aPlayerIdleAnimations[] = {
 	"stretch",
 	"time",
@@ -963,6 +979,9 @@ const AnimAssocDefinition CAnimManager::ms_aAnimAssocDefinitions[NUM_ANIM_ASSOC_
 	{ "csawback", "ped", MI_COP, awc(aChainsawStrafeBackAnimations), aStdAnimDescs },
 	{ "csawleft", "ped", MI_COP, awc(aChainsawStrafeLeftAnimations), aStdAnimDescsSide },
 	{ "csawright", "ped", MI_COP, awc(aChainsawStrafeRightAnimations), aStdAnimDescsSide },
+#endif
+#ifdef CUSTOM_SWIMMING
+	{ "swim", "ped", MI_COP, awc(aSwimAnimations), aSwimAnimDescs },	// reVC fork addition
 #endif
 };
 #undef awc

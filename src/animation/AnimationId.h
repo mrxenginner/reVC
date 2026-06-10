@@ -285,6 +285,14 @@ enum AnimationId
 	ANIM_STRIP_E,
 	ANIM_STRIP_F,
 	ANIM_STRIP_G,
+
+#ifdef CUSTOM_SWIMMING
+	// reVC fork addition: VCS swim clips, kept contiguous so they index cleanly
+	// within ASSOCGRP_SWIM (firstAnimId = ANIM_SWIM_IDLE).
+	ANIM_SWIM_IDLE,
+	ANIM_SWIM_SLOW,
+	ANIM_SWIM_FAST,
+#endif
 };
 
 #endif // __GTA_ANIMATIONID_H__

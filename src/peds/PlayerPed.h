@@ -94,6 +94,9 @@ public:
 	void ProcessAnimGroups(void);
 	void ProcessPlayerWeapon(CPad*);
 	void PlayerControlZelda(CPad*);
+#ifdef CUSTOM_SWIMMING
+	void ProcessSwimming(CPad*);	// reVC fork addition: surface swimming controller
+#endif
 	bool DoesPlayerWantNewWeapon(eWeaponType, bool);
 	void PlayIdleAnimations(CPad*);
 	void RemovePedFromMeleeList(CPed*);

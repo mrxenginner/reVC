@@ -72,6 +72,13 @@ CAnimBlendAssociation::Init(RpClump *clump, CAnimBlendHierarchy *hier)
 		nodes[i].association = this;
 	hierarchy = hier;
 
+#ifdef CUSTOM_SWIMMING
+	// reVC fork addition: tolerate a missing clip (e.g. swim_* absent from ANIM\PED.IFP)
+	// so group creation leaves an empty association instead of dereferencing a null hierarchy.
+	if (hier == nil)
+		return;
+#endif
+
 	// Init every node from a sequence and a Clump frame
 	// NB: This is where the order of nodes is defined
 	for(i = 0; i < hier->numSequences; i++){

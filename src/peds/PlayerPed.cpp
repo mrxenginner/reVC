@@ -24,6 +24,10 @@
 #include "PedPlacement.h"
 #include "VarConsole.h"
 #include "SaveBuf.h"
+#ifdef CUSTOM_SWIMMING
+#include "WaterLevel.h"
+#include "AnimManager.h"
+#endif
 
 #define PAD_MOVE_TO_GAME_WORLD_MOVE 60.0f
 
@@ -1574,6 +1578,87 @@ CPlayerPed::PlayerControlZelda(CPad *padUsed)
 	PlayIdleAnimations(padUsed);
 }
 
+#ifdef CUSTOM_SWIMMING
+// reVC fork addition (NOT reversed): surface-swimming controller. Driven each frame from
+// CPlayerPed::ProcessControl while CPed::ProcessBuoyancy reports the player is in deep water.
+// Tunables (game units) - adjust to taste:
+#define SWIM_STROKE_SLOW	0.045f	// per-frame velocity for a normal stroke
+#define SWIM_STROKE_FAST	0.090f	// sprint stroke
+#define SWIM_SURFACE_OFFSET	0.5f	// how far the ped origin (waist, ~FEET_OFFSET above feet) sits
+					// below the surface. Bigger => lower in the water. THE dial for
+					// how the swimmer rides; tune to taste.
+#define SWIM_MOVE_ACCEL		0.07f	// throttle ramp, matches on-foot accel
+
+void
+CPlayerPed::ProcessSwimming(CPad *padUsed)
+{
+	// Keep the engine's on-foot air/fall machinery out of the way: in deep water the ped
+	// never finds ground, so without this it can stick in PED_JUMP/PED_FALL.
+	// Jump/fall glide are ASSOC_PARTIAL, so the non-partial swim clip can't fade them - if one
+	// carried in (e.g. jumped straight into the water) nuke the partial anims so the stroke shows.
+	if (RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_JUMP_GLIDE) != nil
+		|| RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_FALL_GLIDE) != nil
+		|| RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_FALL) != nil)
+		RpAnimBlendClumpSetBlendDeltas(GetClump(), ASSOC_PARTIAL, -1000.0f);
+	bIsInTheAir = false;
+	bIsLanding = false;
+	bIsStanding = false;
+	if (m_nPedState != PED_IDLE)
+		SetPedState(PED_IDLE);
+
+	// --- Heading & throttle from the stick, camera-relative (mirrors PlayerControlZelda) ---
+	float camOrientation = TheCamera.Orientation;
+	float leftRight = padUsed ? padUsed->GetPedWalkLeftRight() : 0.0f;
+	float upDown = padUsed ? padUsed->GetPedWalkUpDown() : 0.0f;
+	float padMove = CVector2D(leftRight, upDown).Magnitude();
+	bool sprinting = padUsed && padUsed->GetSprint();
+
+	if (padMove > 0.0f) {
+		float padHeading = CGeneral::GetRadianAngleBetweenPoints(0.0f, 0.0f, -leftRight, upDown);
+		m_fRotationDest = CGeneral::LimitRadianAngle(padHeading - camOrientation);
+
+		float target = Min(1.0f, padMove / PAD_MOVE_TO_GAME_WORLD_MOVE);
+		m_fMoveSpeed = Min(target, m_fMoveSpeed + SWIM_MOVE_ACCEL * CTimer::GetTimeStep());
+		m_nMoveState = sprinting ? PEDMOVE_SPRINT : PEDMOVE_RUN;
+	} else {
+		m_fMoveSpeed = 0.0f;
+		m_nMoveState = PEDMOVE_STILL;
+	}
+
+	// --- Drive horizontal motion by velocity along the current facing (fwd = -sin,cos) ---
+	float stroke = 0.0f;
+	if (m_fMoveSpeed > 0.0f)
+		stroke = (sprinting ? SWIM_STROKE_FAST : SWIM_STROKE_SLOW) * m_fMoveSpeed;
+	m_vecMoveSpeed.x = -Sin(m_fRotationCur) * stroke;
+	m_vecMoveSpeed.y =  Cos(m_fRotationCur) * stroke;
+
+	// --- Hold the body at the surface directly (no velocity tug-of-war with buoyancy, so no
+	// bobbing). Keeping the origin consistently below the surface also keeps
+	// CCam::IsTargetInWater stable, which stops the follow-camera flicking in and out of its
+	// water mode. This mirrors the engine's own FEET_OFFSET vertical placement of peds. ---
+	float waterLevel;
+	if (CWaterLevel::GetWaterLevel(GetPosition().x, GetPosition().y, GetPosition().z, &waterLevel, false))
+		GetMatrix().GetPosition().z = waterLevel - SWIM_SURFACE_OFFSET;
+	m_vecMoveSpeed.z = 0.0f;
+
+	// --- Select & blend the swim clip; BlendAnimation fades the others (same partial-ness) ---
+	AnimationId desired;
+	if (m_fMoveSpeed > 0.0f)
+		desired = sprinting ? ANIM_SWIM_FAST : ANIM_SWIM_SLOW;
+	else
+		desired = ANIM_SWIM_IDLE;
+
+	// Only blend if the clip actually loaded. With a PED.IFP that lacks the VCS swim clips the
+	// association exists but with a nil hierarchy; blending it would crash downstream in
+	// BlendAnimation/UncompressAnimation. Missing clips => the player floats without a stroke
+	// (degraded, not fatal) rather than crashing on water entry.
+	CAnimBlendAssociation *swimTemplate = CAnimManager::GetAnimAssociation(ASSOCGRP_SWIM, desired);
+	if (swimTemplate != nil && swimTemplate->hierarchy != nil
+		&& !RpAnimBlendClumpGetAssociation(GetClump(), desired))
+		CAnimManager::BlendAnimation(GetClump(), ASSOCGRP_SWIM, desired, 4.0f);
+}
+#endif
+
 // Finds nice positions for peds to duck and shoot player. And it's inside PlayerPed, this is treachery!
 void
 CPlayerPed::FindNewAttackPoints(void)
@@ -1707,6 +1792,19 @@ CPlayerPed::ProcessControl(void)
 	CPad *padUsed = GetPadFromPlayer(this);
 	m_pWanted->Update();
 	PruneReferences();
+
+#ifdef CUSTOM_SWIMMING
+	// reVC fork addition: ProcessBuoyancy flagged us as swimming this frame (implies player,
+	// on foot, in deep water). Divert to the swim controller and skip the normal on-foot
+	// weapon/movement handling below. The !DyingOrDead() guard is essential: if lethal damage
+	// landed this frame (SetDie -> PED_DIE) we must fall through to the normal death handling
+	// instead of looping the swim controller, which would force PED_IDLE and make the player
+	// unkillable in water.
+	if (bIsSwimming && !DyingOrDead()) {
+		ProcessSwimming(padUsed);
+		return;
+	}
+#endif
 
 	if (GetWeapon()->m_eWeaponType == WEAPONTYPE_MINIGUN) {
 		CWeaponInfo *weaponInfo = CWeaponInfo::GetWeaponInfo(GetWeapon()->m_eWeaponType);
