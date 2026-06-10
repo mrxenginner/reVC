@@ -333,12 +333,17 @@ enum Config {
 #define EXTENDED_PIPELINES		// custom render pipelines (includes Neo)
 #define SCREEN_DROPLETS			// neo water droplets
 #define NEW_RENDERER		// leeds-like world rendering, needs librw
+#define CUSTOM_SHADER_WATER	// CUSTOM: GPU shader water - Gerstner-style waves in the VS, Fresnel + reflection in the PS (needs EXTENDED_PIPELINES)
 #endif
 
 #define FIX_SPRITES	// fix sprites aspect ratio(moon, coronas, particle etc)
 
 #ifndef EXTENDED_COLOURFILTER
 #undef SCREEN_DROPLETS		// we need the backbuffer for this effect
+#endif
+
+#ifndef EXTENDED_PIPELINES
+#undef CUSTOM_SHADER_WATER		// shader water is built on the custom (Neo) librw pipelines
 #endif
 
 // Water & Particle

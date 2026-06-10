@@ -30,6 +30,9 @@
 #include "WaterLevel.h"
 #include "SurfaceTable.h"
 #include "WaterCreatures.h"
+#ifdef CUSTOM_SHADER_WATER
+#include "custompipes.h"
+#endif
 
 #define RwIm3DVertexSet_RGBA(vert, rgba) RwIm3DVertexSetRGBA(vert, rgba.red, rgba.green, rgba.blue, rgba.alpha) // (RwRGBAAssign(&(_dst)->color, &_src))
 
@@ -724,17 +727,23 @@ CWaterLevel::GetWaterLevel(float fX, float fY, float fZ, float *pfOutLevel, bool
 	*pfOutLevel = ms_aWaterZs[nBlock];
 
 	float fAngle = (CTimer::GetTimeInMilliseconds() & 4095) * (TWOPI / 4096.0f);
-	
+
+	// CUSTOM_SHADER_WATER: this is the canonical water wave. It is reproduced
+	// (in world space) by the neoWater vertex shader so the rendered surface
+	// matches what buoyancy/boats sample here. The sector-relative form below
+	// is mathematically identical to: windFactor * Sin((fX+WATER_X_OFFSET+fY)
+	// * (TWOPI/SMALL_SECTOR_SIZE) + fAngle) - the offsets differ only by whole
+	// multiples of TWOPI. Keep the two in sync if you change the wave.
 	float fWave = Sin
 	(
 		( WATER_UNSIGN_Y(fY)                  - y*SMALL_SECTOR_SIZE
 		+ WATER_UNSIGN_X(fX + WATER_X_OFFSET) - x*SMALL_SECTOR_SIZE )
-		
+
 		* (TWOPI / SMALL_SECTOR_SIZE ) + fAngle
 	);
 
 	float fWindFactor = CWeather::WindClipped * 0.4f + 0.2f;
-	
+
 	*pfOutLevel += fWave * fWindFactor;
 
 	if ( bDontCheckZ == false && (*pfOutLevel - fZ) > 3.0f )
@@ -1679,6 +1688,51 @@ CWaterLevel::RenderOneWavySector(float fX, float fY, float fZ, RwRGBA const &col
 
 	if ( COcclusion::IsAABoxOccluded(vecSectorPos, SMALL_SECTOR_SIZE, SMALL_SECTOR_SIZE, 4.0f) )
 		return;
+
+#ifdef CUSTOM_SHADER_WATER
+	// Keep the wavy atomic's pipeline in sync with the toggle. Attaching lazily
+	// (the pipe is created in CustomPipeInit, which may run after the atomic is
+	// built) and detaching on disable keeps switching at runtime safe - the
+	// stock CPU path must not feed the flat geometry to the GPU wave shader.
+	{
+		static bool bWaterPipeAttached = false;
+		if ( CustomPipes::WaterPipeEnable )
+		{
+			if ( !bWaterPipeAttached && CustomPipes::waterPipe != nil )
+			{
+				CustomPipes::AttachWaterPipe(ms_pWavyAtomic);
+				bWaterPipeAttached = true;
+			}
+		}
+		else if ( bWaterPipeAttached )
+		{
+			CustomPipes::DetachWaterPipe(ms_pWavyAtomic);
+			bWaterPipeAttached = false;
+		}
+	}
+
+	if ( CustomPipes::WaterPipeEnable )
+	{
+		// GPU water: the vertex shader displaces the surface (waves match
+		// CWaterLevel::GetWaterLevel), so we skip the per-frame CPU vertex
+		// work entirely and just draw the flat atomic through the water pipe.
+		if (bDontRender == false
+			&& m_nRenderWaterLayers != 2
+			&& m_nRenderWaterLayers != 4
+			&& m_nRenderWaterLayers != 6 )
+		{
+			RwV3d pos = { 0.0f, 0.0f, 0.0f };
+			pos.x = fX;
+			pos.y = fY;
+			pos.z = fZ;
+
+			RwFrameTranslate(RpAtomicGetFrame(ms_pWavyAtomic), &pos, rwCOMBINEREPLACE);
+
+			RpAtomicRender(ms_pWavyAtomic);
+		}
+		return;
+	}
+#endif
 
 #ifdef PC_WATER
 	RequireWavySector = true;

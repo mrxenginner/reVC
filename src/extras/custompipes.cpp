@@ -459,6 +459,34 @@ AttachRimPipe(rw::Clump *clump)
 		AttachRimPipe(rw::Atomic::fromClump(lnk));
 }
 
+
+
+/*
+ * Neo Water pipe (CUSTOM_SHADER_WATER)
+ */
+
+#ifdef CUSTOM_SHADER_WATER
+bool WaterPipeEnable = true;
+float WaterReflectivity = 0.55f;	// how much of the reflection shows through
+float WaterFresnelBias = 0.08f;		// reflection floor when looking straight down
+float WaterDetail = 0.12f;			// cosmetic high-frequency normal ripple
+rw::ObjPipeline *waterPipe;
+
+void
+AttachWaterPipe(rw::Atomic *atomic)
+{
+	atomic->pipeline = waterPipe;
+}
+
+void
+DetachWaterPipe(rw::Atomic *atomic)
+{
+	atomic->pipeline = nil;	// back to the default pipeline (stock CPU water)
+}
+#endif
+
+
+
 /*
  * High level stuff
  */
@@ -481,6 +509,9 @@ CustomPipeInit(void)
 	CreateWorldPipe();
 	CreateGlossPipe();
 	CreateRimLightPipes();
+#ifdef CUSTOM_SHADER_WATER
+	CreateWaterPipe();
+#endif
 }
 
 void
@@ -490,6 +521,9 @@ CustomPipeShutdown(void)
 	DestroyWorldPipe();
 	DestroyGlossPipe();
 	DestroyRimLightPipes();
+#ifdef CUSTOM_SHADER_WATER
+	DestroyWaterPipe();
+#endif
 
 	EnvMapShutdown();
 

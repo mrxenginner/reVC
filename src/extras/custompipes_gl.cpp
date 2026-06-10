@@ -12,6 +12,10 @@
 #include "Renderer.h"
 #include "World.h"
 #include "custompipes.h"
+#ifdef CUSTOM_SHADER_WATER
+#include "Timer.h"
+#include "WaterLevel.h"	// WATER_X_OFFSET, SMALL_SECTOR_SIZE - keep the GPU wave in sync with GetWaterLevel
+#endif
 
 #ifdef EXTENDED_PIPELINES
 
@@ -563,9 +567,139 @@ DestroyRimLightPipes(void)
 
 
 
+#ifdef CUSTOM_SHADER_WATER
+
+/*
+ * Neo Water pipe
+ */
+
+static int32 u_waveParams;	// x=angle, y=windFactor, z=waveK, w=xOffset
+static int32 u_waveParams2;	// x=detail, y=reflStrength, z=fresnelBias, w=time
+static int32 u_waterScroll;	// x=scrollU, y=scrollV, z=texScale, w=unused
+static int32 u_waterColor;	// rgb=timecycle water tint, a=alpha
+
+rw::gl3::Shader *neoWaterShader;
+
+static void
+uploadWaterUniforms(void)
+{
+	using namespace rw;
+	using namespace rw::gl3;
+
+	V3d eyePos = rw::engine->currentCamera->getFrame()->getLTM()->pos;
+	glUniform3fv(U(u_eye), 1, (float*)&eyePos);
+
+	float angle = (CTimer::GetTimeInMilliseconds() & 4095) * (TWOPI / 4096.0f);
+	float windFactor = CWeather::WindClipped * 0.4f + 0.2f;	// MUST match CWaterLevel::GetWaterLevel
+	float t = CTimer::GetTimeInMilliseconds() * 0.001f;
+
+	float waveParams[4];
+	waveParams[0] = angle;
+	waveParams[1] = windFactor;
+	waveParams[2] = TWOPI / SMALL_SECTOR_SIZE;	// waveK
+	waveParams[3] = WATER_X_OFFSET;				// xOffset
+	glUniform4fv(U(u_waveParams), 1, waveParams);
+
+	float waveParams2[4];
+	waveParams2[0] = WaterDetail;
+	waveParams2[1] = WaterReflectivity;
+	waveParams2[2] = WaterFresnelBias;
+	waveParams2[3] = t;
+	glUniform4fv(U(u_waveParams2), 1, waveParams2);
+
+	float scroll[4];
+	scroll[0] = t * 0.015f;
+	scroll[1] = t * 0.011f;
+	scroll[2] = 1.0f / 32.0f;	// world units -> texture tiles
+	scroll[3] = 0.0f;
+	glUniform4fv(U(u_waterScroll), 1, scroll);
+
+	float col[4];
+	col[0] = CTimeCycle::GetWaterRed()   / 255.0f;
+	col[1] = CTimeCycle::GetWaterGreen() / 255.0f;
+	col[2] = CTimeCycle::GetWaterBlue()  / 255.0f;
+	col[3] = 192.0f / 255.0f;	// nWaterAlpha
+	glUniform4fv(U(u_waterColor), 1, col);
+}
+
+static void
+waterRenderCB(rw::Atomic *atomic, rw::gl3::InstanceDataHeader *header)
+{
+	using namespace rw;
+	using namespace rw::gl3;
+
+	setWorldMatrix(atomic->getFrame()->getLTM());
+
+	setupVertexInput(header);
+
+	neoWaterShader->use();
+	uploadWaterUniforms();
+
+	setTexture(1, EnvMapTex);
+
+	SetRenderState(VERTEXALPHA, TRUE);
+	SetRenderState(SRCBLEND, BLENDSRCALPHA);
+	SetRenderState(DESTBLEND, BLENDINVSRCALPHA);
+
+	InstanceData *inst = header->inst;
+	rw::int32 n = header->numMeshes;
+	while(n--){
+		Material *m = inst->material;
+		setTexture(0, m->texture);
+		drawInst(header, inst);
+		inst++;
+	}
+
+	setTexture(1, nil);
+
+	teardownVertexInput(header);
+}
+
+void
+CreateWaterPipe(void)
+{
+	using namespace rw;
+	using namespace rw::gl3;
+
+	{
+#include "shaders/obj/neoWater_frag.inc"
+#include "shaders/obj/neoWater_vert.inc"
+	const char *vs[] = { shaderDecl, header_vert_src, neoWater_vert_src, nil };
+	const char *fs[] = { shaderDecl, header_frag_src, neoWater_frag_src, nil };
+	neoWaterShader = Shader::create(vs, fs);
+	assert(neoWaterShader);
+	}
+
+	rw::gl3::ObjPipeline *pipe = rw::gl3::ObjPipeline::create();
+	pipe->instanceCB = rw::gl3::defaultInstanceCB;
+	pipe->uninstanceCB = nil;
+	pipe->renderCB = waterRenderCB;
+	waterPipe = pipe;
+}
+
+void
+DestroyWaterPipe(void)
+{
+	neoWaterShader->destroy();
+	neoWaterShader = nil;
+
+	((rw::gl3::ObjPipeline*)waterPipe)->destroy();
+	waterPipe = nil;
+}
+
+#endif
+
+
+
 void
 CustomPipeRegisterGL(void)
 {
+#ifdef CUSTOM_SHADER_WATER
+	u_waveParams = rw::gl3::registerUniform("u_waveParams");
+	u_waveParams2 = rw::gl3::registerUniform("u_waveParams2");
+	u_waterScroll = rw::gl3::registerUniform("u_waterScroll");
+	u_waterColor = rw::gl3::registerUniform("u_waterColor");
+#endif
 	u_viewVec = rw::gl3::registerUniform("u_viewVec");
 	u_rampStart = rw::gl3::registerUniform("u_rampStart");
 	u_rampEnd = rw::gl3::registerUniform("u_rampEnd");

@@ -132,6 +132,20 @@ void DestroyRimLightPipes(void);
 void AttachRimPipe(rw::Atomic *atomic);
 void AttachRimPipe(rw::Clump *clump);
 
+#ifdef CUSTOM_SHADER_WATER
+// CUSTOM: GPU shader water pipe. Waves are displaced in the vertex shader and
+// shaded (Fresnel + EnvMapTex reflection) in the pixel/fragment shader.
+extern bool WaterPipeEnable;
+extern float WaterReflectivity;	// reflection strength [0,1]
+extern float WaterFresnelBias;	// minimum reflection at normal incidence [0,1]
+extern float WaterDetail;		// cosmetic high-frequency normal ripple amount
+extern rw::ObjPipeline *waterPipe;
+void CreateWaterPipe(void);
+void DestroyWaterPipe(void);
+void AttachWaterPipe(rw::Atomic *atomic);
+void DetachWaterPipe(rw::Atomic *atomic);
+#endif
+
 }
 
 #endif

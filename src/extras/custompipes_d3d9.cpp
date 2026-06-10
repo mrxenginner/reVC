@@ -13,6 +13,10 @@
 #include "Renderer.h"
 #include "World.h"
 #include "custompipes.h"
+#ifdef CUSTOM_SHADER_WATER
+#include "Timer.h"
+#include "WaterLevel.h"	// WATER_X_OFFSET, SMALL_SECTOR_SIZE - keep the GPU wave in sync with GetWaterLevel
+#endif
 
 #ifdef EXTENDED_PIPELINES
 
@@ -36,7 +40,14 @@ enum {
 	VSLOC_eye = rw::d3d::VSLOC_afterLights,
 
 	VSLOC_reflProps,
-	VSLOC_specLights
+	VSLOC_specLights,
+
+	// water pipe (CUSTOM_SHADER_WATER) - registers c41..c45
+	VSLOC_waterEye = rw::d3d::VSLOC_afterLights,
+	VSLOC_waveParams,
+	VSLOC_waveParams2,
+	VSLOC_waterScroll,
+	VSLOC_waterColor
 };
 
 /*
@@ -552,6 +563,135 @@ DestroyRimLightPipes(void)
 	((rw::d3d9::ObjPipeline*)rimSkinPipe)->destroy();
 	rimSkinPipe = nil;
 }
+
+
+
+/*
+ * Neo Water pipe
+ */
+
+#ifdef CUSTOM_SHADER_WATER
+
+static void *neoWater_VS;
+static void *neoWater_PS;
+
+static void
+uploadWaterConstants(void)
+{
+	using namespace rw;
+	using namespace rw::d3d;
+
+	V3d eyePos = rw::engine->currentCamera->getFrame()->getLTM()->pos;
+	d3ddevice->SetVertexShaderConstantF(VSLOC_waterEye, (float*)&eyePos, 1);
+
+	float angle = (CTimer::GetTimeInMilliseconds() & 4095) * (TWOPI / 4096.0f);
+	float windFactor = CWeather::WindClipped * 0.4f + 0.2f;	// MUST match CWaterLevel::GetWaterLevel
+	float t = CTimer::GetTimeInMilliseconds() * 0.001f;
+
+	float waveParams[4];
+	waveParams[0] = angle;
+	waveParams[1] = windFactor;
+	waveParams[2] = TWOPI / SMALL_SECTOR_SIZE;	// waveK
+	waveParams[3] = WATER_X_OFFSET;				// xOffset
+	d3ddevice->SetVertexShaderConstantF(VSLOC_waveParams, waveParams, 1);
+
+	float waveParams2[4];
+	waveParams2[0] = WaterDetail;
+	waveParams2[1] = WaterReflectivity;
+	waveParams2[2] = WaterFresnelBias;
+	waveParams2[3] = t;
+	d3ddevice->SetVertexShaderConstantF(VSLOC_waveParams2, waveParams2, 1);
+
+	float scroll[4];
+	scroll[0] = t * 0.015f;
+	scroll[1] = t * 0.011f;
+	scroll[2] = 1.0f / 32.0f;	// world units -> texture tiles
+	scroll[3] = 0.0f;
+	d3ddevice->SetVertexShaderConstantF(VSLOC_waterScroll, scroll, 1);
+
+	float col[4];
+	col[0] = CTimeCycle::GetWaterRed()   / 255.0f;
+	col[1] = CTimeCycle::GetWaterGreen() / 255.0f;
+	col[2] = CTimeCycle::GetWaterBlue()  / 255.0f;
+	col[3] = 192.0f / 255.0f;	// nWaterAlpha
+	d3ddevice->SetVertexShaderConstantF(VSLOC_waterColor, col, 1);
+}
+
+static void
+waterRenderCB(rw::Atomic *atomic, rw::d3d9::InstanceDataHeader *header)
+{
+	using namespace rw;
+	using namespace rw::d3d;
+	using namespace rw::d3d9;
+
+	int vsBits;
+	setStreamSource(0, header->vertexStream[0].vertexBuffer, 0, header->vertexStream[0].stride);
+	setIndices(header->indexBuffer);
+	setVertexDeclaration(header->vertexDeclaration);
+
+	vsBits = lightingCB_Shader(atomic);	// sets fog/ambient constants
+	uploadMatrices(atomic->getFrame()->getLTM());
+
+	setVertexShader(neoWater_VS);
+	setPixelShader(neoWater_PS);
+
+	uploadWaterConstants();
+
+	d3d::setTexture(1, EnvMapTex);
+
+	SetRenderState(VERTEXALPHA, TRUE);
+	SetRenderState(SRCBLEND, BLENDSRCALPHA);
+	SetRenderState(DESTBLEND, BLENDINVSRCALPHA);
+
+	InstanceData *inst = header->inst;
+	for(rw::uint32 i = 0; i < header->numMeshes; i++){
+		Material *m = inst->material;
+
+		if(m->texture)
+			d3d::setTexture(0, m->texture);
+		else
+			d3d::setTexture(0, gpWhiteTexture);
+
+		drawInst(header, inst);
+		inst++;
+	}
+
+	d3d::setTexture(1, nil);
+}
+
+void
+CreateWaterPipe(void)
+{
+#include "shaders/obj/neoWater_VS.inc"
+	neoWater_VS = rw::d3d::createVertexShader(neoWater_VS_cso);
+	assert(neoWater_VS);
+
+#include "shaders/obj/neoWater_PS.inc"
+	neoWater_PS = rw::d3d::createPixelShader(neoWater_PS_cso);
+	assert(neoWater_PS);
+
+
+	rw::d3d9::ObjPipeline *pipe = rw::d3d9::ObjPipeline::create();
+	pipe->instanceCB = rw::d3d9::defaultInstanceCB;
+	pipe->uninstanceCB = rw::d3d9::defaultUninstanceCB;
+	pipe->renderCB = waterRenderCB;
+	waterPipe = pipe;
+}
+
+void
+DestroyWaterPipe(void)
+{
+	rw::d3d::destroyVertexShader(neoWater_VS);
+	neoWater_VS = nil;
+
+	rw::d3d::destroyPixelShader(neoWater_PS);
+	neoWater_PS = nil;
+
+	((rw::d3d9::ObjPipeline*)waterPipe)->destroy();
+	waterPipe = nil;
+}
+
+#endif
 
 }
 
