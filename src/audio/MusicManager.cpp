@@ -1469,7 +1469,7 @@ cMusicManager::DisplayRadioStationName()
 #ifdef GTA_PC
 	case USERTRACK:
 		if (SampleManager.IsMP3RadioChannelAvailable())
-			string = TheText.Get("FEA_FM9");
+			string = TheText.Get("FEA_MP3");
 		else
 			return;
 		break;
