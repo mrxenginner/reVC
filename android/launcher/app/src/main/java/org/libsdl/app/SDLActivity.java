@@ -50,6 +50,16 @@ import android.widget.RelativeLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import android.app.ProgressDialog;
+import android.content.SharedPreferences;
+import android.database.Cursor;
+import android.net.Uri;
+import android.os.AsyncTask;
+import android.provider.DocumentsContract;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.Hashtable;
 import java.util.Locale;
 
@@ -62,6 +72,8 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
     private static final int SDL_MAJOR_VERSION = 2;
     private static final int SDL_MINOR_VERSION = 32;
     private static final int SDL_MICRO_VERSION = 8;
+    private static final int REQUEST_GAME_DIR = 1000;
+    private static final String PREF_GAME_READY = "game_ready";
 /*
     // Display InputType.SOURCE/CLASS of events and devices
     //
@@ -325,6 +337,14 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
             Log.v(TAG, "modify thread properties failed " + e.toString());
         }
 
+        // First launch: SAF picker → copy to app-private
+        SharedPreferences prefs = getSharedPreferences(PREF_GAME_READY, MODE_PRIVATE);
+        if (!prefs.getBoolean("ready", false)) {
+            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
+            startActivityForResult(intent, REQUEST_GAME_DIR);
+            return;
+        }
+
         // Load shared libraries
         String errorMsgBrokenLib = "";
         try {
@@ -409,7 +429,7 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
 
         setContentView(mLayout);
 
-        setWindowStyle(false);
+        setWindowStyle(true);
 
         getWindow().getDecorView().setOnSystemUiVisibilityChangeListener(this);
 
@@ -444,6 +464,77 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
         }
 
         SDLActivity.handleNativeState();
+    }
+
+    // SAF picker result + copy
+    @Override
+    protected void onActivityResult(int req, int res, Intent data) {
+        super.onActivityResult(req, res, data);
+        if (req != REQUEST_GAME_DIR || res != RESULT_OK || data == null) { finish(); return; }
+        Uri treeUri = data.getData();
+        if (treeUri == null) { finish(); return; }
+        getContentResolver().takePersistableUriPermission(treeUri,
+            Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        new CopyGameTask().execute(treeUri);
+    }
+
+    private class CopyGameTask extends AsyncTask<Uri, Void, Boolean> {
+        private ProgressDialog dialog;
+        protected void onPreExecute() {
+            dialog = new ProgressDialog(SDLActivity.this);
+            dialog.setTitle("Copying game files");
+            dialog.setMessage("Please wait...");
+            dialog.setProgressStyle(ProgressDialog.STYLE_SPINNER);
+            dialog.setCancelable(false);
+            dialog.show();
+        }
+        protected Boolean doInBackground(Uri... uris) {
+            File dst = getExternalFilesDir(null);
+            if (dst == null) return false;
+            dst.mkdirs();
+            try { copyTree(uris[0], "", dst); return true; }
+            catch (IOException e) { Log.e(TAG, "Copy failed: " + e); return false; }
+        }
+        protected void onPostExecute(Boolean ok) {
+            dialog.dismiss();
+            if (ok) {
+                getSharedPreferences(PREF_GAME_READY, MODE_PRIVATE)
+                    .edit().putBoolean("ready", true).apply();
+                recreate();
+            } else {
+                new AlertDialog.Builder(SDLActivity.this)
+                    .setTitle("Error").setMessage("Failed to copy game files.")
+                    .setPositiveButton("Exit", (d, w) -> finish()).show();
+            }
+        }
+        private void copyTree(Uri treeUri, String path, File dstDir) throws IOException {
+            String docId = DocumentsContract.getTreeDocumentId(treeUri);
+            String childId = path.isEmpty() ? docId : docId + "/" + path;
+            Uri dirUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, childId);
+            try (Cursor c = getContentResolver().query(dirUri,
+                    new String[]{DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                                 DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                                 DocumentsContract.Document.COLUMN_MIME_TYPE},
+                    null, null, null)) {
+                if (c == null) return;
+                while (c.moveToNext()) {
+                    String name = c.getString(1);
+                    String mime = c.getString(2);
+                    String childDocId = c.getString(0);
+                    if (DocumentsContract.Document.MIME_TYPE_DIR.equals(mime)) {
+                        File sub = new File(dstDir, name); sub.mkdirs();
+                        copyTree(treeUri, (path.isEmpty() ? "" : path + "/") + name, sub);
+                    } else {
+                        Uri fileUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, childDocId);
+                        try (InputStream in = getContentResolver().openInputStream(fileUri);
+                             FileOutputStream out = new FileOutputStream(new File(dstDir, name))) {
+                            byte[] buf = new byte[65536]; int n;
+                            while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // Events
@@ -606,6 +697,9 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
         SDLActivity.nativeQuit();
 
         super.onDestroy();
+
+        // Ensure clean process state for next launch
+        android.os.Process.killProcess(android.os.Process.myPid());
     }
 
     @Override

@@ -294,7 +294,15 @@ int
 CFileMgr::OpenFile(const char *file, const char *mode)
 {
 	debug("CFileMgr::OpenFile: %s", file);
+#if defined(ANDROID)
+	char cleanFile[MAX_PATH];
+	strcpy(cleanFile, file);
+	for (char *p = cleanFile; *p; p++)
+		if (*p == '\\') *p = '/';
+	return myfopen(cleanFile, mode);
+#else
 	return myfopen(file, mode);
+#endif
 }
 
 int

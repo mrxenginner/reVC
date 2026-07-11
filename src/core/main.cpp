@@ -531,11 +531,13 @@ Initialise3D(void *param)
 	{
 		POP_MEMID();
 
+
 #ifdef DEBUGMENU
 		DebugMenuInit();
 		DebugMenuPopulate();
 #endif // !DEBUGMENU
-		return CGame::InitialiseRenderWare();
+		bool rwResult = CGame::InitialiseRenderWare();
+		return rwResult;
 	}
 	POP_MEMID();
 

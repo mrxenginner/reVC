@@ -83,7 +83,14 @@ void _psCreateFolder(const char *path)
 #if defined(ANDROID)
 	const char* pathroot = StorageRootBuffer;
 	char dbPath[1024];
-	snprintf(dbPath, sizeof(dbPath), "%s%s", pathroot, path);
+	if (path[0] == '/' && pathroot) {
+		// Path is already absolute, use as-is
+		snprintf(dbPath, sizeof(dbPath), "%s", path);
+	} else if (pathroot) {
+		snprintf(dbPath, sizeof(dbPath), "%s/%s", pathroot, path);
+	} else {
+		snprintf(dbPath, sizeof(dbPath), "%s", path);
+	}
 	mkdir(dbPath, 0755);
 	debug("Creating Folder Path: %s", dbPath);
 #else
@@ -107,8 +114,18 @@ void _psCreateFolder(const char *path)
 const char *_psGetUserFilesFolder()
 {
     static char szUserFiles[256];
+#if defined(ANDROID)
+    const char *root = getenv("STORAGE_ROOT");
+    if (root) {
+        snprintf(szUserFiles, sizeof(szUserFiles), "%s/userfiles", root);
+        _psCreateFolder(szUserFiles);
+    } else {
+        strcpy(szUserFiles, "userfiles");
+    }
+#else
     strcpy(szUserFiles, "userfiles");
     _psCreateFolder(szUserFiles);
+#endif
     return szUserFiles;
 }
 
@@ -473,6 +490,7 @@ psSelectDevice()
 
     RwBool modeFound = FALSE;
 
+
     if (!useDefault)
     {
         GnumSubSystems = RwEngineGetNumSubSystems();
@@ -592,8 +610,10 @@ psSelectDevice()
         }
 
         if(bestFsMode < 0){
-            printf("WARNING: Cannot find desired video mode, selecting device cancelled\n");
-            return FALSE;
+            // Fallback to windowed mode — happens on Android/GLES where
+            // there are no SDL fullscreen display modes
+            bestFsMode = bestWndMode >= 0 ? bestWndMode : 0;
+            FrontEndMenuManager.m_nPrefsWindowed = 1;
         }
         GcurSelVM = bestFsMode;
 
@@ -701,7 +721,7 @@ void _InputInitialiseJoys()
 #if defined ANDROID
         const char* pathRoot = getenv("STORAGE_ROOT");
         char SDL_GAMEPAD_DB_PATH[MAX_PATH];
-        snprintf(SDL_GAMEPAD_DB_PATH, sizeof(SDL_GAMEPAD_DB_PATH), "%s%s", pathRoot, "gamecontrollerdb.txt");
+        snprintf(SDL_GAMEPAD_DB_PATH, sizeof(SDL_GAMEPAD_DB_PATH), "%s/%s", pathRoot, "gamecontrollerdb.txt");
 #else
         const char* SDL_GAMEPAD_DB_PATH = "gamecontrollerdb.txt";
 #endif
@@ -712,8 +732,9 @@ void _InputInitialiseJoys()
         }
     }
 
-    // TODO SDL2 the part below seems unnecessary SDL2 (at least on Linux), remove in the future
-    /*for (int i = 0; i <= SDL_NumJoysticks(); i++) {
+    // Detect already-connected joysticks during init.
+    // Needed on Android where gamepad may already be connected before SDL init.
+    for (int i = 0; i < SDL_NumJoysticks(); i++) {
         if (!IsThisJoystickBlacklisted(i)) {
             if (PSGLOBAL(joy1id) == -1)
                 PSGLOBAL(joy1id) = i;
@@ -732,7 +753,7 @@ void _InputInitialiseJoys()
         strncpy(gSelectedJoystickName, SDL_JoystickNameForIndex(PSGLOBAL(joy1id)), sizeof(gSelectedJoystickName));
 #endif
         ControlsManager.InitDefaultControlConfigJoyPad(count);
-    }*/
+    }
 }
 
 #if 0
@@ -1320,6 +1341,20 @@ main(int argc, char *argv[])
     InitMemoryMgr();
 #endif
 
+#if defined(ANDROID)
+    // Gamepad-only: disable touch-to-mouse emulation
+    SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
+    // Force landscape orientation regardless of auto-rotate
+    SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft");
+
+    // Game assets are copied to app-private storage by Java SAF picker.
+    if (!getenv("STORAGE_ROOT")) {
+        const char *extPath = SDL_AndroidGetExternalStoragePath();
+        if (extPath) setenv("STORAGE_ROOT", extPath, 1);
+    }
+    StorageRootBuffer = getenv("STORAGE_ROOT");
+#endif
+
     struct sigaction act;
     act.sa_sigaction = terminateHandler;
     act.sa_flags = SA_SIGINFO;
@@ -1372,7 +1407,6 @@ main(int argc, char *argv[])
     if( rsEVENTERROR == RsEventHandler(rsRWINITIALIZE, &openParams) )
     {
         RsEventHandler(rsTERMINATE, nil);
-
         return 0;
     }
 

@@ -9,17 +9,17 @@ android {
 
     defaultConfig {
         applicationId "com.revc.game"
-        minSdk 24
+        minSdk 26
         targetSdk 35
         versionCode 1
         versionName "reVC-0.0.1"
 
-        ndkVersion '27.2.12479018'
+        ndkVersion '30.0.15729638'
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
         ndk {
-            abiFilters "armeabi-v7a"/*, "arm64-v8a"*/
+            abiFilters "armeabi-v7a", "arm64-v8a"
         }
     }
 

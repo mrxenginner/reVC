@@ -84,7 +84,9 @@ else()
 endif()
 
 if(${PROJECT}_AUDIO STREQUAL "OAL")
-    find_package(OpenAL REQUIRED)
+    if(NOT TARGET OpenAL::OpenAL)
+        find_package(OpenAL REQUIRED)
+    endif()
     if(TARGET OpenAL::OpenAL)
         target_link_libraries(${EXECUTABLE} PRIVATE OpenAL::OpenAL)
     else()
@@ -99,7 +101,9 @@ elseif(${PROJECT}_AUDIO STREQUAL "MSS")
     target_link_libraries(${EXECUTABLE} PRIVATE MilesSDK::MilesSDK)
 endif()
 
-find_package(mpg123 REQUIRED)
+if(NOT TARGET MPG123::libmpg123)
+    find_package(mpg123 REQUIRED)
+endif()
 target_link_libraries(${EXECUTABLE} PRIVATE
     MPG123::libmpg123
 )
