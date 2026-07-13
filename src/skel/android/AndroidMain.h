@@ -20,19 +20,8 @@ namespace AndWrapper {
     extern bool AppStarted;
 
     bool InitLibraries();
-    void SystemInitialize();
-    void TimeInitialize();
     void* GetJNI();
     void* GetJNIFunc();
-    void* GetObj();
-    const char* GetAppId();
-    const char* GetDeviceID();
-    int GetDeviceInfo(int index);
-    bool IsAppInstalled(const char* app);
-    void OpenLink(const char* link);
-    bool DeviceIsTV();
-    int DeviceLocale();
-    int DeviceType();
 }
 #endif
 

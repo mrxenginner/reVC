@@ -15,13 +15,7 @@
 
 extern int16 g_usLastProcessedModelIndexAutomobile;
 extern int g_iLastProcessedModelIndexAutoEnt;
-
-extern int g_iLastProcessedSkinCollision;
-extern int g_iLastProcessedEntityCollision;
-extern char lastFile[123];
 extern int g_iLastRenderedObject;
-extern int lastNvEvent;
-extern CVector lastPos;
 char g_iLastBlock[123];
 char streamimgState[255];
 
@@ -34,7 +28,11 @@ namespace CrashHandler {
         tm* timeInfo = localtime(&currentTime);
 
         Logger::CrashLog("Crash time: %d:%d:%d %d:%d:%d", timeInfo->tm_mday, timeInfo->tm_mon, timeInfo->tm_year, timeInfo->tm_hour, timeInfo->tm_min, timeInfo->tm_sec);
-        Logger::CrashLog("Build times: %s %s. ABI: %s", __TIME__, __DATE__, (ANDROID_x32 ? "armeabi-v7a" : "arm64-v8a"));
+#ifdef __arm__
+        Logger::CrashLog("Build times: %s %s. ABI: %s", __TIME__, __DATE__, "armeabi-v7a");
+#else
+        Logger::CrashLog("Build times: %s %s. ABI: %s", __TIME__, __DATE__, "arm64-v8a");
+#endif
         Logger::CrashLog("Last processed auto and entity: %d %d", g_usLastProcessedModelIndexAutomobile, g_iLastProcessedModelIndexAutoEnt);
         Logger::CrashLog("Last rendered object: %d", g_iLastRenderedObject);
     }

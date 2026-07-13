@@ -229,9 +229,10 @@ CdStreamInit(int32 numChannels)
 		char pwd[128];
 		getcwd(pwd, 128);
 		setenv("STORAGE_ROOT", pwd, 1);
-        debug("%s\n", pwd);
+		StorageRootBuffer = getenv("STORAGE_ROOT");
+		debug("%s\n", pwd);
 	}
-	
+
 	debug("FILES %s\n", StorageRootBuffer);
 	strcpy(imgPath, StorageRootBuffer);
 	strcat(imgPath, "/models/gta3.img");
@@ -242,8 +243,9 @@ CdStreamInit(int32 numChannels)
     if((statvfs("models/gta3.img", &fsInfo)) < 0)
 #endif
 	{
-		CDTRACE("can't get filesystem info");
-		ASSERT(0);
+		CDTRACE("can't get filesystem info for %s", imgPath);
+		debug("ERROR: Cannot find game assets at %s\n", imgPath);
+		debug("Please copy GTA VC files to this directory\n");
 		return;
 	}
 #if defined ANDROID

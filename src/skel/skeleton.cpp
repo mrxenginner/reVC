@@ -318,7 +318,7 @@ RsRwInitialize(void *displayID)
 	 * Install any platform specific file systems...
 	 */
 	psInstallFileSystem();
-	
+
 	/*
 	 * Initialize debug message handling...
 	 */
@@ -339,7 +339,7 @@ RsRwInitialize(void *displayID)
 	{
 		return (FALSE);
 	}
-	
+
 	openParams.displayID = displayID;
 
 	if (!RwEngineOpen(&openParams))
@@ -347,14 +347,14 @@ RsRwInitialize(void *displayID)
 		RwEngineTerm();
 		return (FALSE);
 	}
-	
+
 	if (RsEventHandler(rsSELECTDEVICE, displayID) == rsEVENTERROR)
 	{
 		RwEngineClose();
 		RwEngineTerm();
 		return (FALSE);
 	}
-	
+
 	if (!RwEngineStart())
 	{
 		RwEngineClose();

@@ -13,7 +13,7 @@
 
 extern uintptr_t g_libREVC;
 
-#if ANDROID_x32
+#ifdef __arm__
 #define PRINT_CRASH_STATES(context) \
 	Logger::CrashLog("register states:"); \
 	Logger::CrashLog("r0: 0x%X, r1: 0x%X, r2: 0x%X, r3: 0x%X", (context)->uc_mcontext.arm_r0, (context)->uc_mcontext.arm_r1, (context)->uc_mcontext.arm_r2, (context)->uc_mcontext.arm_r3); \
