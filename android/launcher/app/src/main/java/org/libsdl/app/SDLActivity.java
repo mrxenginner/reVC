@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.Dialog;
 import android.app.UiModeManager;
+import android.content.ActivityNotFoundException;
 import android.content.ClipboardManager;
 import android.content.ClipData;
 import android.content.Context;
@@ -341,7 +342,16 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
         SharedPreferences prefs = getSharedPreferences(PREF_GAME_READY, MODE_PRIVATE);
         if (!prefs.getBoolean("ready", false)) {
             Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
-            startActivityForResult(intent, REQUEST_GAME_DIR);
+            try {
+                startActivityForResult(intent, REQUEST_GAME_DIR);
+            } catch (ActivityNotFoundException e) {
+                // Google TV ships no SAF document picker. Material Files (or any
+                // file manager exposing a DocumentsProvider) supplies one.
+                Toast.makeText(this,
+                    "No file picker found. Install a file manager (e.g. Material Files) to select the game folder.",
+                    Toast.LENGTH_LONG).show();
+                finish();
+            }
             return;
         }
 

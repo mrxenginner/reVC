@@ -217,7 +217,7 @@ char* casepath(char const* path, bool checkPathFirst)
     }
     else
     #endif
-#if defined(ANDROID) // TODO: Android is fuck!!!
+#if defined(ANDROID) // Android FUSE resolves relative paths differently — strip the root dir prefix and open CWD
     char cwd[MAX_PATH];
     getcwd(cwd, sizeof(cwd));
 

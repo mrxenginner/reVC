@@ -165,6 +165,9 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang
                 -Wno-unused-command-line-argument
                 -faligned-new
         )
+        target_link_options(${EXECUTABLE} PRIVATE
+            -Wl,-z,max-page-size=16384
+        )
     endif()
     target_compile_options(${EXECUTABLE}
         PRIVATE

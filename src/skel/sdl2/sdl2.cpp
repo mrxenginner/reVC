@@ -1345,7 +1345,7 @@ main(int argc, char *argv[])
     // Gamepad-only: disable touch-to-mouse emulation
     SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
     // Force landscape orientation regardless of auto-rotate
-    SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft");
+    SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");
 
     // Game assets are copied to app-private storage by Java SAF picker.
     if (!getenv("STORAGE_ROOT")) {
