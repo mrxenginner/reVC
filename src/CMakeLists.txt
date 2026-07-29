@@ -146,6 +146,24 @@ if(LIBRW_PLATFORM_GL3 AND LIBRW_GL3_GFXLIB STREQUAL "GLFW")
 	endif (GLFW_HAS_X11)
 endif()
 
+# NOTE: LIBRW_PLATFORM_GL3 (set by vendor/librw/CMakeLists.txt via a plain,
+# non-CACHE `set()`) is scoped to that add_subdirectory() call and its own
+# children, so it is empty here in src/ (a sibling subdirectory) -- the
+# if() above never actually triggers. That's a pre-existing issue (the
+# GLFW_HAS_X11/X11 block above has apparently been dead code already) and
+# fixing it is out of scope for the SDL3 sidecar; use the CACHE variable
+# LIBRW_PLATFORM directly instead so this new block reliably runs.
+if(LIBRW_PLATFORM STREQUAL "GL3" AND LIBRW_GL3_GFXLIB STREQUAL "GLFW")
+	find_package(SDL3 CONFIG QUIET)
+	if (SDL3_FOUND)
+		target_link_libraries(${EXECUTABLE} PRIVATE SDL3::SDL3)
+		target_compile_definitions(${EXECUTABLE} PRIVATE SDL3_GAMEPAD)
+		message(STATUS "SDL3 found - gamepad rumble and controller type detection enabled")
+	else ()
+		message(STATUS "SDL3 not found - building without gamepad rumble")
+	endif ()
+endif()
+
 set_target_properties(${EXECUTABLE}
     PROPERTIES
         C_STANDARD 11
