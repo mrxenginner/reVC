@@ -87,6 +87,9 @@ SdlPad_Update(const char *glfwGUID, const char *glfwName)
 	if(!sdlInited)
 		return false;
 
+	// SDL's udev-based hotplug detection runs off SDL_PumpEvents, not
+	// SDL_UpdateGamepads -- without this the device list is frozen at init.
+	SDL_PumpEvents();
 	SDL_UpdateGamepads();
 
 	if(sdlPad && !SDL_GamepadConnected(sdlPad))
