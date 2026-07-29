@@ -393,6 +393,50 @@ static void _psHandleVibration()
 		hidSendVibrationValues(SwitchVibrationDeviceHandles[target_device], SwitchVibrationValues, 2);
 	}
 }
+#elif defined(SDL3_GAMEPAD)
+#include "sdlpad.h"
+
+static void _psInitializeVibration() { SdlPad_Init(); }
+static void _psHandleVibration()
+{
+	CPad *pad = CPad::GetPad(0);
+
+	const char *guid = nil, *name = nil;
+	if(PSGLOBAL(joy1id) != -1){
+		guid = glfwGetJoystickGUID(PSGLOBAL(joy1id));
+		name = glfwGetJoystickName(PSGLOBAL(joy1id));
+	}
+	bool newPad = SdlPad_Update(guid, name);
+#ifdef GAMEPAD_MENU
+	if(newPad){
+		switch(SdlPad_GetControllerType()){
+		case SDLPAD_TYPE_XBOX360:
+			FrontEndMenuManager.m_PrefsControllerType = CMenuManager::CONTROLLER_XBOX360; break;
+		case SDLPAD_TYPE_PS3:
+			FrontEndMenuManager.m_PrefsControllerType = CMenuManager::CONTROLLER_DUALSHOCK3; break;
+		case SDLPAD_TYPE_PS4:
+			FrontEndMenuManager.m_PrefsControllerType = CMenuManager::CONTROLLER_DUALSHOCK4; break;
+		case SDLPAD_TYPE_SWITCH:
+			FrontEndMenuManager.m_PrefsControllerType = CMenuManager::CONTROLLER_NINTENDO_SWITCH; break;
+		default:
+			FrontEndMenuManager.m_PrefsControllerType = CMenuManager::CONTROLLER_XBOXONE; break;
+		}
+	}
+#else
+	(void)newPad;
+#endif
+
+	// mirror the XInput vibration logic (CPad::AffectFromXinput, src/core/Pad.cpp)
+	if(pad->ShakeDur < CTimer::GetTimeStepInMilliseconds())
+		pad->ShakeDur = 0;
+	else
+		pad->ShakeDur -= CTimer::GetTimeStepInMilliseconds();
+	if(pad->ShakeDur == 0)
+		pad->ShakeFreq = 0;
+
+	uint16 mag = (uint16)((float)pad->ShakeFreq / 255.0f * 65535.0f);
+	SdlPad_Rumble(mag, mag, pad->ShakeDur);
+}
 #else
 static void _psInitializeVibration() {}
 static void _psHandleVibration() {}
@@ -591,6 +635,9 @@ psInitialize(void)
 void
 psTerminate(void)
 {
+#ifdef SDL3_GAMEPAD
+	SdlPad_Shutdown();
+#endif
 	return;
 }
 
