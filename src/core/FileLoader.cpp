@@ -1217,6 +1217,11 @@ CFileLoader::LoadObjectInstance(const char *line)
 			ThePaths.RegisterMapObject((CTreadable*)entity);
 		}else
 			entity = new CBuilding;
+		if(entity == nil){
+			debug("Building pool full, skipping instance %d %s\n", id, mi->GetModelName());
+			RwMatrixDestroy(xform);
+			return;
+		}
 		entity->SetModelIndexNoCreate(id);
 		entity->GetMatrix() = CMatrix(xform);
 		entity->m_level = CTheZones::GetLevelFromPosition(&entity->GetPosition());
@@ -1242,6 +1247,11 @@ CFileLoader::LoadObjectInstance(const char *line)
 			entity->bUnderwater = true;
 	}else{
 		entity = new CDummyObject;
+		if(entity == nil){
+			debug("Dummy pool full, skipping instance %d %s\n", id, mi->GetModelName());
+			RwMatrixDestroy(xform);
+			return;
+		}
 		entity->SetModelIndexNoCreate(id);
 		entity->GetMatrix() = CMatrix(xform);
 		CWorld::Add(entity);
