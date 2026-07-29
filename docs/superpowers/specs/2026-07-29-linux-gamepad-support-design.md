@@ -25,20 +25,24 @@ Missing vs GInput:
 - Default controller type remains `CONTROLLER_XBOXONE` (matches 8BitDo Ultimate 2 layout). Preference persists via existing settings save.
 - With `GAMEPAD_MENU` + `DETECT_PAD_INPUT_SWITCH`, `CControllerConfigManager::GetWideStringOfCommandKeys` switches prompt sets by `m_PrefsControllerType` (PlayStation/Switch/Xbox) automatically.
 
-### 2. Evdev rumble backend
+### 2. SDL3 gamepad sidecar (rumble + controller-type detection)
 
-New file `src/skel/glfw/linux-rumble.cpp` (+ small header), Linux-only, behind a new `EVDEV_RUMBLE` define (set in `src/core/config.h`, guarded by `#if defined(__linux__) && !defined(GTA_HANDHELD)`).
+**Revision 2026-07-29:** replaces the earlier evdev rumble design after user request to use SDL3 (installed: sdl3 3.4.12). GLFW remains the input source — pad buttons/sticks already work through `CapturePad` and `gamecontrollerdb.txt`. SDL3 is initialized with the gamepad subsystem only (no video) and provides the two capabilities GLFW lacks: rumble and controller-type identification. Full input migration to SDL3 was considered and rejected: no user-visible gain today, real regression risk in bindings/menu code.
 
-Interface (single active pad, mirroring the game's single-pad reality):
-- `LinuxRumbleOpen(const char *joyName)` — scan `/dev/input/event*`; match `EVIOCGNAME` against the active GLFW joystick name; require `FF_RUMBLE` capability (`EVIOCGBIT(EV_FF)`); open RW, upload one `ff_effect` (type `FF_RUMBLE`, infinite length, magnitudes updated in place).
-- `LinuxRumbleUpdate(uint16 leftMag, uint16 rightMag)` — re-upload effect with new magnitudes and play/stop it; no-ops cheaply when magnitudes are unchanged.
-- `LinuxRumbleClose()` — stop effect, close fd.
+New files `src/skel/glfw/sdlpad.cpp` / `sdlpad.h`, behind a new `SDL3_GAMEPAD` define (set by CMake when SDL3 is found and the gfxlib is GLFW). Interface (single active pad):
+- `SdlPad_Init()` — `SDL_Init(SDL_INIT_GAMEPAD)`; failure disables the sidecar, never fatal.
+- `SdlPad_Update()` — per frame: `SDL_UpdateGamepads()`; reconcile the open `SDL_Gamepad*` with the pad GLFW is using (`PSGLOBAL(joy1id)`), matching by SDL GUID — `glfwGetJoystickGUID()` vs `SDL_GetJoystickGUIDForID()` with GUID chars 4–7 masked (SDL3 embeds a CRC there that GLFW's SDL2-format GUIDs zero), falling back to name match, then to the only present gamepad. Handles hot-plug via this reconciliation.
+- `SdlPad_Rumble(uint16 lowMag, uint16 highMag, uint32 durationMs)` — `SDL_RumbleGamepad`.
+- `SdlPad_GetControllerType()` — maps `SDL_GetGamepadType()` to `CMenuManager::CONTROLLER_*` (PS3→DS3, PS4/PS5→DS4, Xbox360→360, XboxOne→One, Switch→NSW, default XboxOne).
+- `SdlPad_Shutdown()`.
 
-Hook points in `src/skel/glfw/glfw.cpp`:
-- Pad connect/disconnect (`joysChangeCB` / `_InputInitialiseJoys`): open/close the rumble device for the active pad.
-- Per-frame pad poll (next to `glfwGetGamepadState`): replicate the XInput consumption logic — if `m_PrefsUseVibration` and `ShakeFreq > 0`, magnitude = `ShakeFreq/255 * 0xffff` for both motors; decrement `ShakeDur` by `CTimer::GetTimeStepInMilliseconds()`; zero freq when expired.
+Hook points in `src/skel/glfw/glfw.cpp` (follows the existing `__SWITCH__` pattern):
+- `_psInitializeVibration()` → `SdlPad_Init()`; shutdown on exit.
+- `_psHandleVibration()` (already called each frame from `CapturePad`) → `SdlPad_Update()`, then replicate the XInput consumption logic: magnitude = `ShakeFreq/255 * 0xffff` for both motors; decrement `ShakeDur` by `CTimer::GetTimeStepInMilliseconds()`; zero freq when expired; feed `SdlPad_Rumble`. (`m_PrefsUseVibration` is enforced by `CPad::StartShake*`, same as the XInput path.)
 
-Error handling: any failure (no matching node, no FF capability, open/ioctl error) disables rumble silently (debug log only). Never fatal. Device access relies on standard udev `uaccess` ACLs for seated users; no elevated permissions.
+Auto prompt type: when the sidecar opens a gamepad, set `FrontEndMenuManager.m_PrefsControllerType = SdlPad_GetControllerType()` (requires `GAMEPAD_MENU` from section 1). The menu remains a manual override until the next pad connect.
+
+Build: `find_package(SDL3 CONFIG)` in `src/CMakeLists.txt`; sidecar compiled only when found (warning otherwise), linked `SDL3::SDL3`. Error handling throughout: any SDL failure degrades to no-rumble/no-detection with a debug log; never fatal.
 
 ### 3. Out of scope
 
@@ -48,7 +52,8 @@ Error handling: any failure (no matching node, no FF capability, open/ioctl erro
 
 ## Testing
 
-1. Build compiles with `GAMEPAD_MENU` + `EVDEV_RUMBLE`.
+1. Build compiles with `GAMEPAD_MENU` + `SDL3_GAMEPAD`.
 2. Launch: Options → Controller page appears; switching controller type changes help-prompt icon style (PS/Xbox/Switch).
-3. Rumble: standalone check that the FF effect fires on the 8BitDo (fftest-equivalent), then in-game verification by the user (vehicle collision), vibration toggle honored.
-4. Regression: keyboard/mouse still works; game still boots with no pad connected; pad hot-plug during gameplay doesn't crash.
+3. Rumble: standalone SDL3 test program confirms `SDL_RumbleGamepad` fires on the 8BitDo, then in-game verification by the user (vehicle collision), vibration toggle honored.
+4. Auto-detection: connecting the 8BitDo (XInput-style) selects Xbox prompts without touching the menu.
+5. Regression: keyboard/mouse still works; game still boots with no pad connected; pad hot-plug during gameplay doesn't crash.
