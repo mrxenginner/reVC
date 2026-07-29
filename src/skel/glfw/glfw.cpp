@@ -51,6 +51,9 @@ long _dwOperatingSystemVersion;
 #include "AnimViewer.h"
 #include "Font.h"
 #include "MemoryMgr.h"
+#ifdef SDL3_GAMEPAD
+#include "sdlpad.h"
+#endif
 
 // This is defined on project-level, via premake5 or cmake
 #ifdef GET_KEYBOARD_INPUT_FROM_X11
@@ -394,8 +397,6 @@ static void _psHandleVibration()
 	}
 }
 #elif defined(SDL3_GAMEPAD)
-#include "sdlpad.h"
-
 static void _psInitializeVibration() { SdlPad_Init(); }
 static void _psHandleVibration()
 {
@@ -407,26 +408,40 @@ static void _psHandleVibration()
 		name = glfwGetJoystickName(PSGLOBAL(joy1id));
 	}
 	bool newPad = SdlPad_Update(guid, name);
+	if(newPad){
+		// a shake queued up while padless (or for a previous pad) shouldn't
+		// fire the instant a new pad is plugged in.
+		pad->ShakeDur = 0;
+		pad->ShakeFreq = 0;
+	}
 #ifdef GAMEPAD_MENU
 	if(newPad){
+		int8 newType;
 		switch(SdlPad_GetControllerType()){
-		case SDLPAD_TYPE_XBOX360:
-			FrontEndMenuManager.m_PrefsControllerType = CMenuManager::CONTROLLER_XBOX360; break;
-		case SDLPAD_TYPE_PS3:
-			FrontEndMenuManager.m_PrefsControllerType = CMenuManager::CONTROLLER_DUALSHOCK3; break;
-		case SDLPAD_TYPE_PS4:
-			FrontEndMenuManager.m_PrefsControllerType = CMenuManager::CONTROLLER_DUALSHOCK4; break;
-		case SDLPAD_TYPE_SWITCH:
-			FrontEndMenuManager.m_PrefsControllerType = CMenuManager::CONTROLLER_NINTENDO_SWITCH; break;
-		default:
-			FrontEndMenuManager.m_PrefsControllerType = CMenuManager::CONTROLLER_XBOXONE; break;
+		case SDLPAD_TYPE_XBOX360: newType = CMenuManager::CONTROLLER_XBOX360; break;
+		case SDLPAD_TYPE_PS3: newType = CMenuManager::CONTROLLER_DUALSHOCK3; break;
+		case SDLPAD_TYPE_PS4: newType = CMenuManager::CONTROLLER_DUALSHOCK4; break;
+		case SDLPAD_TYPE_SWITCH: newType = CMenuManager::CONTROLLER_NINTENDO_SWITCH; break;
+		default: newType = CMenuManager::CONTROLLER_XBOXONE; break;
+		}
+		if(newType != FrontEndMenuManager.m_PrefsControllerType){
+			FrontEndMenuManager.m_PrefsControllerType = newType;
+			// CMenuManager::LoadAllTextures() calls LoadController(m_PrefsControllerType)
+			// when the frontend loads (Frontend.cpp:3074), so the pref alone is
+			// correct if sprites aren't loaded yet. If they already are, swap the
+			// button-icon TXD immediately so a hot-plugged pad's prompts update.
+			if(FrontEndMenuManager.m_bSpritesLoaded)
+				FrontEndMenuManager.LoadController(newType);
 		}
 	}
 #else
 	(void)newPad;
 #endif
 
-	// mirror the XInput vibration logic (CPad::AffectFromXinput, src/core/Pad.cpp)
+	// mirror the XInput vibration logic (CPad::AffectFromXinput, src/core/Pad.cpp):
+	// magnitude comes from ShakeFreq before it decays below.
+	uint16 mag = (uint16)((float)pad->ShakeFreq / 255.0f * 65535.0f);
+
 	if(pad->ShakeDur < CTimer::GetTimeStepInMilliseconds())
 		pad->ShakeDur = 0;
 	else
@@ -434,7 +449,6 @@ static void _psHandleVibration()
 	if(pad->ShakeDur == 0)
 		pad->ShakeFreq = 0;
 
-	uint16 mag = (uint16)((float)pad->ShakeFreq / 255.0f * 65535.0f);
 	SdlPad_Rumble(mag, mag, pad->ShakeDur);
 }
 #else
