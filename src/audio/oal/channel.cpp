@@ -9,7 +9,11 @@
 #endif
 
 extern bool IsFXSupported();
+#ifdef FIX_BUGS
+// Defined in sampman_oal.cpp behind the same guard, so without one here the Vanilla
+// configuration references a symbol that was never emitted and fails at link (LNK2001).
 extern size_t gPlayerTalkDataSize;
+#endif
 
 ALuint alSources[NUM_CHANNELS];
 ALuint alFilters[NUM_CHANNELS];
@@ -26,7 +30,11 @@ CChannel::InitChannels()
 	if (IsFXSupported())
 		alGenFilters(NUM_CHANNELS, alFilters);
 
+#ifdef FIX_BUGS
 	tempStereoBuffer = new uint8[Max(PED_BLOCKSIZE, gPlayerTalkDataSize) * 2];
+#else
+	tempStereoBuffer = new uint8[PED_BLOCKSIZE * 2];
+#endif
 	bChannelsCreated = true;
 }
 
