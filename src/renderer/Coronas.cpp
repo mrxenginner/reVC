@@ -913,9 +913,21 @@ CEntity::ProcessLightsForEntity(void)
 						effect->light.shadowSize, 0.0f,
 						0.0f, -effect->light.shadowSize,
 						128,
+#ifdef FIX_BUGS
+						// StoreStaticShadow takes these as uint8 and nothing bounds them on
+						// the way in, so a value past 255 wraps instead of clipping and the
+						// decal comes out dark rather than merely too bright. Retail data
+						// stops at exactly 255 (sprBght tops out at 1.00 in timecyc.dat),
+						// but the parser stores sprBght*10 in an int8, so anything asking
+						// for more than 1.0 is already over.
+						Min(effect->col.r*CTimeCycle::GetSpriteBrightness()*effect->light.shadowIntensity/255.0f, 255.0f),
+						Min(effect->col.g*CTimeCycle::GetSpriteBrightness()*effect->light.shadowIntensity/255.0f, 255.0f),
+						Min(effect->col.b*CTimeCycle::GetSpriteBrightness()*effect->light.shadowIntensity/255.0f, 255.0f),
+#else
 						effect->col.r*CTimeCycle::GetSpriteBrightness()*effect->light.shadowIntensity/255.0f,
 						effect->col.g*CTimeCycle::GetSpriteBrightness()*effect->light.shadowIntensity/255.0f,
 						effect->col.b*CTimeCycle::GetSpriteBrightness()*effect->light.shadowIntensity/255.0f,
+#endif
 						15.0f, 1.0f, 40.0f, false, 0.0f);
 				}else if(lightFlickering){
 					CShadows::StoreStaticShadow((uintptr)this + i, SHADOWTYPE_ADDITIVE,

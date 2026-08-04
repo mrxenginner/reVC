@@ -296,12 +296,16 @@ bool
 CanVideoCardDoDXT(void)
 {
 #ifdef LIBRW
-	// TODO
-#ifdef RW_OPENGL
-	return false;
-#else
-	return true;
-#endif
+	// Answering "no" unconditionally is not free: CStreaming::Init then builds
+	// MODELS\TXD.IMG, repacking every texture dictionary out of its D3D8 container, and
+	// TXD.DIR is scanned before GTA3.DIR - so that copy is what gets read from then on and
+	// the originals are shadowed. On the retail PC data that is 1360 dictionaries, ~180 MB
+	// of duplicate and a conversion pass on first run, for a card that can read the
+	// originals directly. GetGPUcaps already asks librw the same question, so ask it here:
+	// desktop GL has S3TC, and a GLES device without it still takes the conversion path.
+	GPUcaps caps;
+	GetGPUcaps(&caps);
+	return !!caps.dxtSupport;
 #else
 	return _rwD3D8CheckValidTextureFormat(D3DFMT_DXT1) && _rwD3D8CheckValidTextureFormat(D3DFMT_DXT3);
 #endif
