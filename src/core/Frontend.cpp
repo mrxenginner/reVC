@@ -4759,6 +4759,14 @@ CMenuManager::ProcessUserInput(uint8 goDown, uint8 goUp, uint8 optionSelected, u
 				InitialiseChangedLanguageSettings();
 				SaveSettings();
 				break;
+#ifdef MORE_LANGUAGES
+			case MENUACTION_LANG_POR:
+				m_PrefsLanguage = LANGUAGE_PORTUGUESE;
+				m_bFrontEnd_ReloadObrTxtGxt = true;
+				InitialiseChangedLanguageSettings();
+				SaveSettings();
+				break;
+#endif
 			case MENUACTION_CHECKSAVE:
 			{
 				int saveSlot = aScreens[m_nCurrScreen].m_aEntries[m_nCurrOption].m_SaveSlot;
