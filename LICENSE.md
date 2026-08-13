@@ -1,6 +1,6 @@
 # MIT License with Proof-of-Usage Condition (MIT-PoU)
 
-Copyright (c) [Year] [Copyright Holders]
+Copyright (c) 2020-2026 mrxenginner and the reVC contributors
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
