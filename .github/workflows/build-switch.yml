@@ -1,29 +1,75 @@
+name: Build reVC.nro (Nintendo Switch)
 
-name: reVC cmake devkitA64 (Nintendo Switch)
 on:
-  pull_request:
   push:
-  release:
-    types: published
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version. Leave it empty to avoid publishing a release.'
+        required: false
+        type: string
+
 jobs:
-  build-nintendo-switch:
+  build:
     runs-on: ubuntu-latest
-    container: devkitpro/devkita64:latest
+    container:
+      image: devkitpro/devkita64:latest
+      options: --user root
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
         with:
-          submodules: 'true'
-      - name: "Build files"
+          submodules: 'recursive'
+
+      - name: Install required Switch libraries
         run: |
-          /opt/devkitpro/portlibs/switch/bin/aarch64-none-elf-cmake -S. -Bbuild -DREVC_AUDIO=OAL -DLIBRW_PLATFORM=GL3 -DLIBRW_GL3_GFXLIB=GLFW -DREVC_WITH_OPUS=False -DREVC_VENDORED_LIBRW=True -DREVC_INSTALL=True
+          dkp-pacman -S --noconfirm --needed \
+            switch-mesa \
+            switch-libdrm_nouveau \
+            switch-glfw \
+            switch-glm \
+            switch-libpng \
+            switch-mpg123 \
+            switch-openal-soft \
+            switch-sdl2
+
+      - name: Build
+        run: |
+          /opt/devkitpro/portlibs/switch/bin/aarch64-none-elf-cmake -S. -Bbuild \
+            -DREVC_AUDIO=OAL -DLIBRW_PLATFORM=GL3 -DLIBRW_GL3_GFXLIB=GLFW \
+            -DREVC_WITH_OPUS=False -DREVC_VENDORED_LIBRW=True -DREVC_INSTALL=True
           cmake --build build --parallel
-      - name: "Create binary package (cpack)"
-        working-directory: ./build
-        run: |
-          cpack
-      - name: "Archive binary package (github artifacts)"
+
+      - name: Collect NRO
+        run: find build -name 'reVC.nro' -exec cp {} reVC.nro \;
+
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: "switch-gl3"
-          path: build/*.tar.xz
+          name: reVC-switch
+          path: reVC.nro
           if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && inputs.version != ''
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: reVC-switch
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "v${{ inputs.version }}"
+          name: "reVC v${{ inputs.version }}"
+          files: reVC.nro
+          draft: false
+          prerelease: false
