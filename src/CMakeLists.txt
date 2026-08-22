@@ -93,6 +93,13 @@ if(${PROJECT}_AUDIO STREQUAL "OAL")
         target_compile_definitions(${EXECUTABLE} PRIVATE ${OPENAL_DEFINITIONS})
     endif()
     target_compile_definitions(${EXECUTABLE} PRIVATE AUDIO_OAL)
+    # Nintendo Switch: devkitPro's OpenAL is built with an SDL2 audio backend,
+    # so libopenal.a references SDL_* symbols that must be linked in after it.
+    if(NINTENDO_SWITCH)
+        find_package(PkgConfig REQUIRED)
+        pkg_check_modules(SDL2 REQUIRED IMPORTED_TARGET sdl2)
+        target_link_libraries(${EXECUTABLE} PRIVATE PkgConfig::SDL2)
+    endif()
 elseif(${PROJECT}_AUDIO STREQUAL "MSS")
     find_package(MilesSDK REQUIRED)
     target_compile_definitions(${EXECUTABLE} PRIVATE AUDIO_MSS)
