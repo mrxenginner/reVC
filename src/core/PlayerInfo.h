@@ -2,6 +2,7 @@
 #define __GTA_PLAYERINFO_H__
 
 #include "ColModel.h"
+#include "Lists.h"
 
 enum eWastedBustedState
 {
