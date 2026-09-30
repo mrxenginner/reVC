@@ -60,7 +60,7 @@ re3_sem_close(sem_t* sem)
 	free(sem);
 }
 
-#elifndef ANDROID
+#elif !defined(ANDROID)
 
 #define RE3_SEM_OPEN re3_sem_open
 sem_t*
@@ -238,7 +238,7 @@ CdStreamInit(int32 numChannels)
     debug("%s\n", imgPath);
 
     if((statvfs(imgPath, &fsInfo)) < 0)
-#elifndef ANDROID
+#elif !defined(ANDROID)
     if((statvfs("models/gta3.img", &fsInfo)) < 0)
 #endif
 	{
