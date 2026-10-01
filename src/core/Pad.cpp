@@ -890,6 +890,11 @@ CMouseControllerState CMousePointerStateHelper::GetMouseSetUp()
 	return state;
 }
 
+#ifdef LIBRW_SDL2
+bool _InputMouseIsRelative(void);
+void _InputConsumeMouseRelative(int *dx, int *dy);
+#endif
+
 void CPad::UpdateMouse()
 {
 #if defined RW_D3D9 || defined RWLIBS
@@ -942,8 +947,13 @@ void CPad::UpdateMouse()
         double xpos = 1.0f, ypos;
 		glfwGetCursorPos(PSGLOBAL(window), &xpos, &ypos);
 #endif
-		if (xpos == 0.f)
-			return;
+		#ifdef LIBRW_SDL2
+		        if (!_InputMouseIsRelative() && xpos == 0)
+		            return;
+		#else
+		        if (xpos == 0.f)
+		            return;
+		#endif
 
 		int32 signX = 1;
 		int32 signy = 1;
@@ -958,8 +968,20 @@ void CPad::UpdateMouse()
 
 		PCTempMouseControllerState.Clear();
 
-		PCTempMouseControllerState.x = (float)(signX * (xpos - PSGLOBAL(lastMousePos.x)));
-		PCTempMouseControllerState.y = (float)(signy * (ypos - PSGLOBAL(lastMousePos.y)));
+		#ifdef LIBRW_SDL2
+		        if (_InputMouseIsRelative()) {
+		            // true relative deltas from the motion events; polled positions are
+		            // confined and stall at window/monitor edges
+		            int dx, dy;
+		            _InputConsumeMouseRelative(&dx, &dy);
+		            PCTempMouseControllerState.x = (float)(signX * dx);
+		            PCTempMouseControllerState.y = (float)(signy * dy);
+		        } else
+		#endif
+		        {
+		            PCTempMouseControllerState.x = (float)(signX * (xpos - PSGLOBAL(lastMousePos.x)));
+		            PCTempMouseControllerState.y = (float)(signy * (ypos - PSGLOBAL(lastMousePos.y)));
+		        }
 #ifdef LIBRW_SDL2
         PCTempMouseControllerState.LMB = !!(mouseState & SDL_BUTTON(1));
         PCTempMouseControllerState.RMB = !!(mouseState & SDL_BUTTON(3));
