@@ -48,7 +48,13 @@ if(IS_DIRECTORY "${REVC_GAME_DIR}" AND EXISTS "${REVC_GAME_DIR}/CMakeLists.txt")
     message(" *  🚀 Initiating Game module build configuration...")
     message("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
     message(" ")
-    #add_subdirectory(${REVC_GAME_DIR} ${CMAKE_BINARY_DIR}/game_build)
+
+    # Wire SDL2/OpenAL/mpg123 to the prebuilt per-ABI vendor binaries before
+    # the game module's find_package() calls run.
+    list(APPEND CMAKE_MODULE_PATH "${REVC_GAME_DIR}/cmake/android")
+    include(AndroidConfig)
+
+    add_subdirectory(${REVC_GAME_DIR} ${CMAKE_BINARY_DIR}/game_build)
 else()
     message(" *  ⚠️ Game source directory or CMakeLists.txt not found at: ${REVC_GAME_DIR}")
     message(FATAL_ERROR " *  ❗ Please ensure the game module sources are available for the build.")

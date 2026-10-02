@@ -61,6 +61,11 @@ if(LIBRW_PLATFORM_D3D9)
 endif()
 
 if(ANDROID)
+    if(ANDROID_ABI STREQUAL "armeabi-v7a")
+        target_compile_definitions(${EXECUTABLE} PRIVATE ANDROID_x32=1)
+    else()
+        target_compile_definitions(${EXECUTABLE} PRIVATE ANDROID_x32=0)
+    endif()
     target_compile_definitions(${EXECUTABLE} PRIVATE
             ANDROID
             _ANDROID
