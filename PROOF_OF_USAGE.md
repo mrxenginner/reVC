@@ -7,6 +7,7 @@ period.
 
 | System | Operator | Date and Time (UTC) | Scope | Purpose | Contact | Provenance Hash |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| Claude + DeepSeek | Amon | 2026-10-06T18:17:45Z | src/control/CGame.cpp, ScriptCommands.h, Script.cpp, ScriptDebug.cpp (area-visibility and SCM opcode mechanism) | reference (comparative game-engine research for reVC-Project, no code copied) | amonrayford@gmail.com | `53f37fbc803bad826f166650e67a503e062f88a1b57aea777de5c80e9dfb3348` |
 
 <!-- A row looks like this, with the digest of its own four fields in backticks:
 
