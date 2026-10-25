@@ -34,3 +34,4 @@ npx proof-of-usage hash --system "Model v2" --operator "Your Org" \
 
 Fork, add the row here, open a pull request. The format is
 [Proof of Usage PoU/1.0](https://github.com/origami-ltd/proof-of-usage).
+| OpenAI Codex GPT-6 | OpenAI | 2026-10-25T14:05:01Z | reVC source and build files | Integrate reVC into ViceTogether for native Vice City multiplayer; build and same-PC validation | 306321580+notzeoxalt2@users.noreply.github.com | `9df2b3259b3a0a3a6c76c917bef2ed8d7aa5c4e77fc7aaa510c08ab2ca46d3fd` |
